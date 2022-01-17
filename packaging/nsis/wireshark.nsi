@@ -63,7 +63,7 @@ BrandingText "Wireshark${U+00ae} Installer"
 !define MUI_WELCOMEPAGE_TITLE_3LINES
 !define MUI_WELCOMEPAGE_TEXT "This wizard will guide you through the installation of ${PROGRAM_NAME}.$\r$\n$\r$\nBefore starting the installation, make sure ${PROGRAM_NAME} is not running.$\r$\n$\r$\nClick 'Next' to continue."
 ;!define MUI_FINISHPAGE_LINK "Install Npcap to be able to capture packets from a network."
-;!define MUI_FINISHPAGE_LINK_LOCATION "https://nmap.org/npcap/"
+;!define MUI_FINISHPAGE_LINK_LOCATION "https://npcap.com/"
 
 ; NSIS shows Readme files by opening the Readme file with the default application for
 ; the file's extension. "README.win32" won't work in most cases, because extension "win32"
@@ -278,6 +278,10 @@ Function .onInit
     ${IfNot} ${RunningX64}
       MessageBox MB_OK "This version of Wireshark only runs on x64 machines.$\nTry installing the 32-bit version instead." /SD IDOK
       Abort
+    ${EndIf}
+  !else
+    ${If} ${RunningX64}
+      MessageBox MB_OK "You are installing a 32-bit version of Wireshark on a 64-bit machine.$\nWe recommend installing the 64-bit version instead." /SD IDOK
     ${EndIf}
   !endif
 
