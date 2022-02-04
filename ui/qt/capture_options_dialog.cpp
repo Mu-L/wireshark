@@ -499,7 +499,7 @@ void CaptureOptionsDialog::itemClicked(QTreeWidgetItem *item, int column)
             QString device_name = ti->data(col_extcap_, Qt::UserRole).value<QString>();
             if (extcap_has_configuration((const char *)(device_name.toStdString().c_str()), FALSE))
             {
-                emit showExtcapOptions(device_name);
+                emit showExtcapOptions(device_name, false);
                 return;
             }
         }
@@ -527,7 +527,7 @@ void CaptureOptionsDialog::itemDoubleClicked(QTreeWidgetItem *item)
         QString device_name = ti->data(col_extcap_, Qt::UserRole).value<QString>();
         if (extcap_has_configuration((const char *)(device_name.toStdString().c_str()), TRUE))
         {
-            emit showExtcapOptions(device_name);
+            emit showExtcapOptions(device_name, true);
             return;
         }
     }
@@ -549,7 +549,11 @@ void CaptureOptionsDialog::on_gbNewFileAuto_toggled(bool checked)
     ui->stopMBComboBox->setEnabled(checked?false:true);
     ui->gbCompression->setEnabled(checked);
     ui->rbCompressionNone->setEnabled(checked);
+#ifdef HAVE_ZLIB
     ui->rbCompressionGzip->setEnabled(checked);
+#else
+    ui->rbCompressionGzip->setEnabled(false);
+#endif
 }
 
 void CaptureOptionsDialog::on_cbUpdatePacketsRT_toggled(bool checked)
@@ -598,7 +602,7 @@ void CaptureOptionsDialog::on_buttonBox_accepted()
                 QString device_name = ti->data(col_extcap_, Qt::UserRole).value<QString>();
                 if (extcap_has_configuration((const char *)(device_name.toStdString().c_str()), TRUE))
                 {
-                    emit showExtcapOptions(device_name);
+                    emit showExtcapOptions(device_name, true);
                     return;
                 }
             }
