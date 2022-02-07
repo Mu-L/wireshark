@@ -3344,7 +3344,7 @@ dissect_dns_answer(tvbuff_t *tvb, int offsetx, int dns_data_offset,
     {
       int         rr_len, initial_offset = cur_offset;
       guint8      salt_len, hash_len;
-      proto_item *flags_item;
+      proto_item *flags_item, *hash_item;
       proto_tree *flags_tree;
 
       proto_tree_add_item(rr_tree, hf_dns_nsec3_algo, tvb, cur_offset, 1, ENC_BIG_ENDIAN);
@@ -3369,8 +3369,26 @@ dissect_dns_answer(tvbuff_t *tvb, int offsetx, int dns_data_offset,
       hash_len = tvb_get_guint8(tvb, cur_offset);
       cur_offset += 1;
 
-      proto_tree_add_item(rr_tree, hf_dns_nsec3_hash_value, tvb, cur_offset, hash_len, ENC_NA);
-      cur_offset += hash_len;
+      /*
+       * The code below is optimized for simplicity as trailing padding
+       * characters ("=") are not used in the NSEC3 specification (see RFC 5155
+       * section 1.3).
+       */
+      if (hash_len) {
+        /* Base 32 Encoding with Extended Hex Alphabet (see RFC 4648 section 7) */
+        const char    *base32hex = "0123456789abcdefghijklmnopqrstuv";
+        wmem_strbuf_t *hash_value_base32hex = wmem_strbuf_new(pinfo->pool, "");
+        int            group, in_offset, out_offset;
+        for (in_offset = 0, out_offset = 0;
+            in_offset / 8 < hash_len;
+            in_offset += 5, out_offset += 1) {
+          group = tvb_get_bits8(tvb, cur_offset * 8 + in_offset, 5);
+          wmem_strbuf_append_c(hash_value_base32hex, base32hex[group]);
+        }
+        hash_item = proto_tree_add_string(rr_tree, hf_dns_nsec3_hash_value, tvb, cur_offset, hash_len, wmem_strbuf_finalize(hash_value_base32hex));
+        proto_item_set_generated(hash_item);
+        cur_offset += hash_len;
+      }
 
       rr_len = data_len - (cur_offset - initial_offset);
       dissect_type_bitmap(rr_tree, tvb, cur_offset, rr_len);
@@ -5138,12 +5156,12 @@ proto_register_dns(void)
         FT_STRING, BASE_NONE, NULL, 0x0,
         NULL, HFILL }},
 
-    { & hf_dns_minfo_r_mailbox,
+    { &hf_dns_minfo_r_mailbox,
       { "Responsible Mailbox", "dns.minfo.r",
         FT_STRING, BASE_NONE, NULL, 0x0,
         NULL, HFILL }},
 
-    { & hf_dns_minfo_e_mailbox,
+    { &hf_dns_minfo_e_mailbox,
       { "Error Mailbox", "dns.minfo.e",
         FT_STRING, BASE_NONE, NULL, 0x0,
         NULL, HFILL }},
@@ -5915,7 +5933,7 @@ proto_register_dns(void)
 
     { &hf_dns_nsec3_hash_value,
       { "Next hashed owner", "dns.nsec3.hash_value",
-        FT_BYTES, BASE_NONE, NULL, 0,
+        FT_STRING, BASE_NONE, NULL, 0,
         NULL, HFILL }},
 
     { &hf_dns_tlsa_certificate_usage,
