@@ -134,6 +134,7 @@
 #define LONGOPT_ELASTIC_MAPPING_FILTER  LONGOPT_BASE_APPLICATION+4
 #define LONGOPT_EXPORT_TLS_SESSION_KEYS LONGOPT_BASE_APPLICATION+5
 #define LONGOPT_CAPTURE_COMMENT         LONGOPT_BASE_APPLICATION+6
+#define LONGOPT_HEXDUMP                 LONGOPT_BASE_APPLICATION+7
 
 capture_file cfile;
 
@@ -171,6 +172,8 @@ static gboolean quiet = FALSE;
 static gboolean really_quiet = FALSE;
 static gchar* delimiter_char = " ";
 static gboolean dissect_color = FALSE;
+static guint hexdump_source_option = HEXDUMP_SOURCE_MULTI; /* Default - Enable legacy multi-source mode */
+static guint hexdump_ascii_option = HEXDUMP_ASCII_INCLUDE; /* Default - Enable legacy undelimited ASCII dump */
 
 static print_format_e print_format = PR_FMT_TEXT;
 static print_stream_t *print_stream = NULL;
@@ -428,6 +431,13 @@ print_usage(FILE *output)
   fprintf(output, "  -P, --print              print packet summary even when writing to a file\n");
   fprintf(output, "  -S <separator>           the line separator to print between packets\n");
   fprintf(output, "  -x                       add output of hex and ASCII dump (Packet Bytes)\n");
+  fprintf(output, "  --hexdump <hexoption>    add hexdump, set options for data source and ASCII dump\n");
+  fprintf(output, "     all                   dump all data sources (-x default)\n");
+  fprintf(output, "     frames                dump only frame data source\n");
+  fprintf(output, "     ascii                 include ASCII dump text (-x default)\n");
+  fprintf(output, "     delimit               delimit ASCII dump text with '|' characters\n");
+  fprintf(output, "     noascii               exclude ASCII dump text\n");
+  fprintf(output, "     help                  display help for --hexdump and exit\n");
   fprintf(output, "  -T pdml|ps|psml|json|jsonraw|ek|tabs|text|fields|?\n");
   fprintf(output, "                           format of text output (def: text)\n");
   fprintf(output, "  -j <protocolfilter>      protocols layers filter if -T ek|pdml|json selected\n");
@@ -472,6 +482,8 @@ print_usage(FILE *output)
   fprintf(output, "                           values\n");
   fprintf(output, "  --elastic-mapping-filter <protocols> If -G elastic-mapping is specified, put only the\n");
   fprintf(output, "                           specified protocols within the mapping file\n");
+  fprintf(output, "  --temp-dir <directory>   write temporary files to this directory\n");
+  fprintf(output, "                           (default: %s)\n", g_get_tmp_dir());
   fprintf(output, "\n");
 
   ws_log_print_usage(output);
@@ -524,6 +536,31 @@ glossary_option_help(void)
   fprintf(output, "  -G currentprefs          dump current preferences and exit\n");
   fprintf(output, "  -G defaultprefs          dump default preferences and exit\n");
   fprintf(output, "  -G folders               dump about:folders\n");
+  fprintf(output, "\n");
+}
+
+static void
+hexdump_option_help(FILE *output)
+{
+  fprintf(output, "%s\n", get_appname_and_version());
+  fprintf(output, "\n");
+  fprintf(output, "tshark: Valid --hexdump <hexoption> values include:\n");
+  fprintf(output, "\n");
+  fprintf(output, "Data source options:\n");
+  fprintf(output, "  all                      add hexdump, dump all data sources (-x default)\n");
+  fprintf(output, "  frames                   add hexdump, dump only frame data source\n");
+  fprintf(output, "\n");
+  fprintf(output, "ASCII options:\n");
+  fprintf(output, "  ascii                    add hexdump, include ASCII dump text (-x default)\n");
+  fprintf(output, "  delimit                  add hexdump, delimit ASCII dump text with '|' characters\n");
+  fprintf(output, "  noascii                  add hexdump, exclude ASCII dump text\n");
+  fprintf(output, "\n");
+  fprintf(output, "Miscellaneous:\n");
+  fprintf(output, "  help                     display this help and exit\n");
+  fprintf(output, "\n");
+  fprintf(output, "Example:\n");
+  fprintf(output, "\n");
+  fprintf(output, "    $ tshark ... --hexdump frames --hexdump delimit ...\n");
   fprintf(output, "\n");
 }
 
@@ -581,7 +618,13 @@ about_folders(void)
    */
 
   /* temp */
-  printf("%-21s\t%s\n", "Temp:", g_get_tmp_dir());
+  constpath = g_get_tmp_dir();
+#ifdef HAVE_LIBPCAP
+  /* global_capture_opts only exists in this case */
+  if (global_capture_opts.temp_dir)
+    constpath = global_capture_opts.temp_dir;
+#endif
+  printf("%-21s\t%s\n", "Temp:", constpath);
 
   /* pers conf */
   path = get_persconffile_path("", FALSE);
@@ -701,6 +744,7 @@ main(int argc, char *argv[])
     {"no-duplicate-keys", ws_no_argument, NULL, LONGOPT_NO_DUPLICATE_KEYS},
     {"elastic-mapping-filter", ws_required_argument, NULL, LONGOPT_ELASTIC_MAPPING_FILTER},
     {"capture-comment", ws_required_argument, NULL, LONGOPT_CAPTURE_COMMENT},
+    {"hexdump", ws_required_argument, NULL, LONGOPT_HEXDUMP},
     {0, 0, 0, 0 }
   };
   gboolean             arg_error = FALSE;
@@ -1094,6 +1138,7 @@ main(int argc, char *argv[])
     case 'B':        /* Buffer size */
 #endif
     case LONGOPT_COMPRESS_TYPE:        /* compress type */
+    case LONGOPT_CAPTURE_TMPDIR:       /* capture temp directory */
       /* These are options only for packet capture. */
 #ifdef HAVE_LIBPCAP
       exit_status = capture_opts_add_opt(&global_capture_opts, opt, ws_optarg);
@@ -1475,6 +1520,30 @@ main(int argc, char *argv[])
         capture_comments = g_ptr_array_new_with_free_func(g_free);
       }
       g_ptr_array_add(capture_comments, g_strdup(ws_optarg));
+      break;
+    case LONGOPT_HEXDUMP:
+      print_hex = TRUE;
+      print_packet_info = TRUE;
+      if (strcmp(ws_optarg, "all") == 0)
+        hexdump_source_option = HEXDUMP_SOURCE_MULTI;
+      else if (strcmp(ws_optarg, "frames") == 0)
+        hexdump_source_option = HEXDUMP_SOURCE_PRIMARY;
+      else if (strcmp(ws_optarg, "ascii") == 0)
+        hexdump_ascii_option = HEXDUMP_ASCII_INCLUDE;
+      else if (strcmp(ws_optarg, "delimit") == 0)
+        hexdump_ascii_option = HEXDUMP_ASCII_DELIMIT;
+      else if (strcmp(ws_optarg, "noascii") == 0)
+        hexdump_ascii_option = HEXDUMP_ASCII_EXCLUDE;
+      else if (strcmp("help", ws_optarg) == 0) {
+        hexdump_option_help(stdout);
+        exit_status = EXIT_SUCCESS;
+        goto clean_exit;
+      } else {
+        fprintf(stderr, "tshark: \"%s\" is an invalid value for --hexdump <hexoption>\n", ws_optarg);
+        fprintf(stderr, "For valid <hexoption> values enter: tshark --hexdump help\n");
+        exit_status = INVALID_OPTION;
+        goto clean_exit;
+      }
       break;
     default:
     case '?':        /* Bad flag - print usage message */
@@ -3565,10 +3634,23 @@ process_cap_file(capture_file *cf, char *save_file, int out_file_type,
   wtap_dump_params params = WTAP_DUMP_PARAMS_INIT;
   char        *shb_user_appl;
   pass_status_t first_pass_status, second_pass_status;
+  gboolean pcapng_pcapng_workaround = false;
+  wtapng_iface_descriptions_t if_tmp;
 
   if (save_file != NULL) {
     /* Set up to write to the capture file. */
     wtap_dump_params_init_no_idbs(&params, cf->provider.wth);
+
+    /* workaround for pcapng -> pcapng (e.g., when pcapng starts with a custom block) */
+    if (out_file_type == wtap_pcapng_file_type_subtype() && params.encap == WTAP_ENCAP_UNKNOWN) {
+      pcapng_pcapng_workaround = true;
+      params.encap = WTAP_ENCAP_PER_PACKET;
+      params.dont_copy_idbs = true; /* make sure this stay true */
+      if (params.idb_inf->interface_data != NULL) {
+        /* lets fake an interface, which is not copied anyway */
+        g_array_insert_val(params.idb_inf->interface_data, 0, if_tmp);
+      }
+    }
 
     /* If we don't have an application name add TShark */
     if (wtap_block_get_string_option_value(g_array_index(params.shb_hdrs, wtap_block_t, 0), OPT_SHB_USERAPPL, &shb_user_appl) != WTAP_OPTTYPE_SUCCESS) {
@@ -3591,6 +3673,11 @@ process_cap_file(capture_file *cf, char *save_file, int out_file_type,
     } else {
       pdh = wtap_dump_open(save_file, out_file_type, WTAP_UNCOMPRESSED, &params,
                            &err, &err_info);
+    }
+
+    if (pcapng_pcapng_workaround) {
+      /* remove the fake interface before it will be used */
+      g_array_remove_index((params.idb_inf->interface_data), 0);
     }
 
     g_free(params.idb_inf);
@@ -3658,7 +3745,7 @@ process_cap_file(capture_file *cf, char *save_file, int out_file_type,
        * If we got a read error on the first pass, we still do the second
        * pass, so we can at least process the packets we read, and then
        * report the first-pass error after the second pass (and before
-       * we report any second-pass errors), so all the the errors show up
+       * we report any second-pass errors), so all the errors show up
        * at the end.
        */
       second_pass_status = process_cap_file_second_pass(cf, pdh, &err, &err_info,
@@ -4315,7 +4402,7 @@ print_packet(capture_file *cf, epan_dissect_t *edt)
       if (!print_line(print_stream, 0, ""))
         return FALSE;
     }
-    if (!print_hex_data(print_stream, edt))
+    if (!print_hex_data(print_stream, edt, hexdump_source_option | hexdump_ascii_option))
       return FALSE;
     if (!print_line(print_stream, 0, separator))
       return FALSE;
