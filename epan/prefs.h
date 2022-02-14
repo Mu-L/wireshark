@@ -190,6 +190,7 @@ typedef struct _e_prefs {
   gboolean     gui_interfaces_show_hidden;
   gboolean     gui_interfaces_remote_display;
   gboolean     gui_io_graph_automatic_update;
+  gboolean     gui_packet_details_show_byteview;
   gchar       *capture_device;
   gchar       *capture_devices_linktypes;
   gchar       *capture_devices_descr;
@@ -766,6 +767,25 @@ void prefs_register_decode_as_range_preference(module_t *module, const char *nam
  */
 void prefs_register_decode_as_preference(module_t *module, const char *name,
     const char *title, const char *description, guint *var);
+
+/**
+ * Register a preference with an password (password is never stored).
+ * @param module the preferences module returned by prefs_register_protocol() or
+ *               prefs_register_protocol_subtree()
+ * @param name the preference's identifier. This is appended to the name of the
+ *             protocol, with a "." between them, to create a unique identifier.
+ *             The identifier should not include the protocol name, as
+ *             the preference file will already have it. Make sure that
+ *             only lower-case ASCII letters, numbers, underscores and
+ *             dots appear in the preference name.
+ * @param title the title in the preferences dialog
+ * @param description the description included in the preferences file
+ *                    and shown as tooltip in the GUI, or NULL
+ * @param var pointer to the storage location that is updated when the
+ *                    field is changed in the preference dialog box
+ */
+WS_DLL_PUBLIC void prefs_register_password_preference(module_t *module, const char *name,
+    const char *title, const char *description, const char **var);
 
 /**
  * Register a preference that used to be supported but no longer is.

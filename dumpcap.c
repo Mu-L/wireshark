@@ -38,6 +38,7 @@
 
 #include <wsutil/socket.h>
 #include <wsutil/wslog.h>
+#include <wsutil/file_util.h>
 
 #ifdef HAVE_LIBCAP
 # include <sys/prctl.h>
@@ -320,7 +321,7 @@ static gboolean need_timeout_workaround;
 static void
 dumpcap_log_writer(const char *domain, enum ws_log_level level,
                                    struct timespec timestamp,
-                                   const char *file, int line, const char *func,
+                                   const char *file, long line, const char *func,
                                    const char *user_format, va_list user_ap,
                                    void *user_data);
 
@@ -434,6 +435,8 @@ print_usage(FILE *output)
     fprintf(output, "  --capture-comment <comment>\n");
     fprintf(output, "                           add a capture comment to the output file\n");
     fprintf(output, "                           (only for pcapng)\n");
+    fprintf(output, "  --temp-dir <directory>   write temporary files to this directory\n");
+    fprintf(output, "                           (default: %s)\n", g_get_tmp_dir());
     fprintf(output, "\n");
 
     ws_log_print_usage(output);
@@ -576,7 +579,7 @@ get_pcap_failure_secondary_error_message(cap_device_open_status open_status,
         return
             "In order to capture packets, Npcap or WinPcap must be installed. See\n"
             "\n"
-            "        https://nmap.org/npcap/\n"
+            "        https://npcap.com/\n"
             "\n"
             "for a downloadable version of Npcap and for instructions on how to\n"
             "install it.";
@@ -3538,7 +3541,7 @@ static gboolean
 capture_loop_open_output(capture_options *capture_opts, int *save_file_fd,
                          char *errmsg, int errmsg_len)
 {
-    gchar    *capfile_name;
+    gchar    *capfile_name = NULL;
     gchar    *prefix, *suffix;
     gboolean  is_tempfile;
     GError   *err_tempfile = NULL;
@@ -3678,7 +3681,7 @@ capture_loop_open_output(capture_options *capture_opts, int *save_file_fd,
         } else {
             suffix = ".pcap";
         }
-        *save_file_fd = create_tempfile(&capfile_name, prefix, suffix, &err_tempfile);
+        *save_file_fd = create_tempfile(capture_opts->temp_dir, &capfile_name, prefix, suffix, &err_tempfile);
         g_free(prefix);
         is_tempfile = TRUE;
     }
@@ -3687,8 +3690,8 @@ capture_loop_open_output(capture_options *capture_opts, int *save_file_fd,
     if (*save_file_fd == -1) {
         if (is_tempfile) {
             snprintf(errmsg, errmsg_len,
-                       "The temporary file to which the capture would be saved (\"%s\") "
-                       "could not be opened: %s.", capfile_name, err_tempfile->message);
+                       "The temporary file to which the capture would be saved "
+                       "could not be opened: %s.", err_tempfile->message);
             g_error_free(err_tempfile);
         } else {
             if (capture_opts->multi_files_on) {
@@ -4485,8 +4488,14 @@ capture_loop_wrote_one_packet(capture_src *pcap_src) {
         pcap_src->received++;
     }
 
-    /* check -c NUM / -a packets:NUM */
+    /* check -c NUM */
     if (global_capture_opts.has_autostop_packets && global_ld.packets_captured >= global_capture_opts.autostop_packets) {
+        fflush(global_ld.pdh);
+        global_ld.go = FALSE;
+        return;
+    }
+    /* check -a packets:NUM (treat like -c NUM) */
+    if (global_capture_opts.has_autostop_written_packets && global_ld.packets_captured >= global_capture_opts.autostop_written_packets) {
         fflush(global_ld.pdh);
         global_ld.go = FALSE;
         return;
@@ -5163,6 +5172,7 @@ main(int argc, char *argv[])
         case 'I':        /* Monitor mode */
 #endif
         case LONGOPT_COMPRESS_TYPE:        /* compress type */
+        case LONGOPT_CAPTURE_TMPDIR:       /* capture temp directory */
             status = capture_opts_add_opt(&global_capture_opts, opt, ws_optarg);
             if (status != 0) {
                 exit_main(status);
@@ -5588,7 +5598,7 @@ main(int argc, char *argv[])
 static void
 dumpcap_log_writer(const char *domain, enum ws_log_level level,
                                    struct timespec timestamp,
-                                   const char *file, int line, const char *func,
+                                   const char *file, long line, const char *func,
                                    const char *user_format, va_list user_ap,
                                    void *user_data _U_)
 {
