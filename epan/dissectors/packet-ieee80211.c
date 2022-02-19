@@ -6107,6 +6107,14 @@ static int hf_ieee80211_vs_mist_data = -1;
 static int hf_ieee80211_vs_ruckus_ap_name = -1;
 static int hf_ieee80211_vs_ruckus_data = -1;
 
+static int hf_ieee80211_vs_fortinet_subtype = -1;
+static int hf_ieee80211_vs_fortinet_system_type = -1;
+static int hf_ieee80211_vs_fortinet_system_length = -1;
+static int hf_ieee80211_vs_fortinet_system_apname = -1;
+static int hf_ieee80211_vs_fortinet_system_apmodel = -1;
+static int hf_ieee80211_vs_fortinet_system_apserial = -1;
+static int hf_ieee80211_vs_fortinet_data = -1;
+
 static int hf_ieee80211_rsn_ie_ptk_keyid = -1;
 
 static int hf_ieee80211_rsn_ie_gtk_keyid = -1;
@@ -9209,7 +9217,7 @@ dissect_venue_name_info(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, int
       break;
     }
     proto_tree_add_item(tree, hf_ieee80211_ff_anqp_venue_language,
-                        tvb, offset, 3, ENC_ASCII|ENC_NA);
+                        tvb, offset, 3, ENC_ASCII);
     proto_tree_add_item(tree, hf_ieee80211_ff_anqp_venue_name,
                         tvb, offset + 3, vlen - 3, ENC_UTF_8);
     offset += vlen;
@@ -9238,7 +9246,7 @@ dissect_network_auth_type(proto_tree *tree, tvbuff_t *tvb, int offset, int end)
     offset += 2;
     if (len)
       proto_tree_add_item(tree, hf_ieee80211_ff_anqp_nw_auth_type_url,
-                          tvb, offset, len, ENC_ASCII|ENC_NA);
+                          tvb, offset, len, ENC_ASCII);
     offset += len;
   }
 }
@@ -9256,7 +9264,7 @@ dissect_anqp_network_auth_type_timestamp(proto_tree *tree, tvbuff_t *tvb, int of
     offset += 2;
     if(len)
       proto_tree_add_item(tree, hf_ieee80211_ff_anqp_nw_auth_type_ts_url,
-                          tvb, offset, len, ENC_ASCII|ENC_NA);
+                          tvb, offset, len, ENC_ASCII);
     offset += len;
     /* Optional Time Value - Either 0 or 10 octets */
     /* Format: Octet 0-1: Year (0-65534)
@@ -9585,7 +9593,7 @@ dissect_domain_name_list(proto_tree *tree, tvbuff_t *tvb, int offset, int end)
                         tvb, offset, 1, ENC_LITTLE_ENDIAN);
     offset += 1;
     proto_tree_add_item(tree, hf_ieee80211_ff_anqp_domain_name,
-                        tvb, offset, len, ENC_ASCII|ENC_NA);
+                        tvb, offset, len, ENC_ASCII);
     offset += len;
   }
 }
@@ -9603,7 +9611,7 @@ dissect_hs20_subscription_remediation(tvbuff_t *tvb, packet_info *pinfo _U_,
   offset++;
   if (tvb_reported_length_remaining(tvb, offset) >= url_len) {
     pi = proto_tree_add_item(tree, hf_ieee80211_hs20_subscription_remediation_server_url,
-                        tvb, offset, url_len, ENC_ASCII|ENC_NA);
+                        tvb, offset, url_len, ENC_ASCII);
     offset += url_len;
     proto_item_set_url(pi);
     proto_tree_add_item(tree, hf_ieee80211_hs20_subscription_remediation_server_method,
@@ -9636,7 +9644,7 @@ dissect_hs20_deauthentication_imminent(tvbuff_t *tvb, packet_info *pinfo _U_,
 
   if (tvb_reported_length_remaining(tvb, offset) >= url_len) {
     pi = proto_tree_add_item(tree, hf_ieee80211_hs20_deauth_imminent_reason_url,
-                        tvb, offset, url_len, ENC_ASCII|ENC_NA);
+                        tvb, offset, url_len, ENC_ASCII);
     offset += url_len;
     proto_item_set_url(pi);
   }
@@ -9847,7 +9855,7 @@ dissect_hs20_anqp_nai_home_realm_query(proto_tree *tree, tvbuff_t *tvb, packet_i
       break;
     }
     proto_tree_add_item(tree, hf_ieee80211_hs20_anqp_nai_hrq_realm_name,
-                        tvb, offset, len, ENC_ASCII|ENC_NA);
+                        tvb, offset, len, ENC_ASCII);
     offset += len;
   }
 }
@@ -9909,7 +9917,7 @@ dissect_hs20_osu_icon_available(proto_tree *tree, tvbuff_t *tvb,
   offset += 2;
 
   proto_tree_add_item(icon_avail, hf_ieee80211_osu_icon_avail_lang_code, tvb, offset, 3,
-                        ENC_ASCII|ENC_NA);
+                        ENC_ASCII);
   offset += 3;
 
   icon_type_len = tvb_get_guint8(tvb, offset);
@@ -9918,7 +9926,7 @@ dissect_hs20_osu_icon_available(proto_tree *tree, tvbuff_t *tvb,
   offset++;
 
   proto_tree_add_item(icon_avail, hf_ieee80211_osu_icon_avail_icon_type, tvb, offset,
-                        icon_type_len, ENC_ASCII|ENC_NA);
+                        icon_type_len, ENC_ASCII);
   offset += icon_type_len;
 
   icon_filename_len = tvb_get_guint8(tvb, offset);
@@ -9927,7 +9935,7 @@ dissect_hs20_osu_icon_available(proto_tree *tree, tvbuff_t *tvb,
   offset++;
 
   proto_tree_add_item(icon_avail, hf_ieee80211_osu_icon_avail_filename, tvb, offset,
-                        icon_filename_len, ENC_ASCII|ENC_NA);
+                        icon_filename_len, ENC_ASCII);
   offset += icon_filename_len;
 
   proto_item_set_len(pi, offset - start_offset);
@@ -9972,7 +9980,7 @@ dissect_hs20_osu_provider(proto_tree *tree, tvbuff_t *tvb,
   offset++;
 
   uri_pi = proto_tree_add_item(prov_tree, hf_ieee80211_hs20_osu_server_uri, tvb, offset,
-                        osu_server_uri_len, ENC_ASCII|ENC_NA);
+                        osu_server_uri_len, ENC_ASCII);
   offset += osu_server_uri_len;
   proto_item_set_url(uri_pi);
 
@@ -10067,11 +10075,11 @@ dissect_hs20_osu_provider(proto_tree *tree, tvbuff_t *tvb,
       offset++;
 
       proto_tree_add_item(desc_duple, hf_ieee80211_hs20_osu_service_desc_lang, tvb, offset,
-                                3, ENC_ASCII|ENC_NA);
+                                3, ENC_ASCII);
       offset += 3;
 
       proto_tree_add_item(desc_duple, hf_ieee80211_hs20_osu_service_desc, tvb, offset,
-                                serv_desc_len - 3, ENC_ASCII|ENC_NA);
+                                serv_desc_len - 3, ENC_ASCII);
       offset += serv_desc_len - 3;
 
       service_desc_index++;
@@ -10187,7 +10195,7 @@ dissect_hs20_anqp_operator_icon_metadata(proto_tree *tree, tvbuff_t *tvb,
   offset += 2;
 
   proto_tree_add_item(tree, hf_ieee80211_osu_icon_avail_lang_code, tvb, offset, 3,
-                        ENC_ASCII|ENC_NA);
+                        ENC_ASCII);
   offset += 3;
 
   icon_type_len = tvb_get_guint8(tvb, offset);
@@ -10196,7 +10204,7 @@ dissect_hs20_anqp_operator_icon_metadata(proto_tree *tree, tvbuff_t *tvb,
   offset++;
 
   proto_tree_add_item(tree, hf_ieee80211_osu_icon_avail_icon_type, tvb, offset,
-                        icon_type_len, ENC_ASCII|ENC_NA);
+                        icon_type_len, ENC_ASCII);
   offset += icon_type_len;
 
   icon_filename_len = tvb_get_guint8(tvb, offset);
@@ -10205,7 +10213,7 @@ dissect_hs20_anqp_operator_icon_metadata(proto_tree *tree, tvbuff_t *tvb,
   offset++;
 
   proto_tree_add_item(tree, hf_ieee80211_osu_icon_avail_filename, tvb, offset,
-                        icon_filename_len, ENC_ASCII|ENC_NA);
+                        icon_filename_len, ENC_ASCII);
   offset += icon_filename_len;
 
   proto_item_set_len(pi, offset - start_offset);
@@ -10234,7 +10242,7 @@ dissect_anqp_venue_url(proto_tree *tree, tvbuff_t *tvb, int offset, int end)
     offset++;
 
     url_pi = proto_tree_add_item(venue_url, hf_ieee80211_hs20_anqp_venue_url, tvb, offset,
-                        url_duple_len -1, ENC_ASCII|ENC_NA);
+                        url_duple_len -1, ENC_ASCII);
     proto_item_set_url(url_pi);
 
     offset += (url_duple_len - 1);
@@ -10312,11 +10320,11 @@ dissect_hs20_anqp_advice_of_charge(proto_tree *tree, tvbuff_t *tvb, int offset,
         offset += 2;
 
         proto_tree_add_item(plan_info_tree, hf_ieee80211_hs20_anqp_aoc_plan_lang, tvb,
-                        offset, 3, ENC_ASCII|ENC_NA);
+                        offset, 3, ENC_ASCII);
         offset += 3;
 
         proto_tree_add_item(plan_info_tree, hf_ieee80211_hs20_anqp_aoc_plan_curcy, tvb,
-                        offset, 3, ENC_ASCII|ENC_NA);
+                        offset, 3, ENC_ASCII);
         offset += 3;
 
         proto_tree_add_item(plan_info_tree, hf_ieee80211_hs20_anqp_aoc_plan_information,
@@ -11380,7 +11388,7 @@ static guint
 add_ff_country_str(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo _U_, int offset)
 {
   proto_tree_add_item(tree, hf_ieee80211_ff_country_str, tvb, offset, 3,
-                      ENC_ASCII|ENC_NA);
+                      ENC_ASCII);
   return 3;
 }
 
@@ -11978,7 +11986,7 @@ add_ff_fils_discovery(proto_tree *tree, tvbuff_t *tvb,
     offset += 4;
   } else {
     ssid_length = (fc & PA_FILS_FC_SSID_LENGTH) + 1;
-    proto_tree_add_item(tree, hf_ieee80211_ff_fils_discovery_ssid, tvb, offset, ssid_length, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(tree, hf_ieee80211_ff_fils_discovery_ssid, tvb, offset, ssid_length, ENC_ASCII);
     offset += ssid_length;
   }
 
@@ -13132,7 +13140,7 @@ wnm_bss_trans_mgmt_req(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, int 
                         ENC_LITTLE_ENDIAN);
     offset += 1;
     proto_tree_add_item(tree, hf_ieee80211_ff_url, tvb, offset, url_len,
-                        ENC_ASCII|ENC_NA);
+                        ENC_ASCII);
     offset += url_len;
     left -= url_len + 1;
   }
@@ -16659,7 +16667,7 @@ dissect_qos_mgmt(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void* 
                           ett_qos_mgmt_domain_name, NULL,
                           "Domain Name");
       proto_tree_add_item(sub_tree, hf_ieee80211_qos_mgmt_domain_name, tvb,
-                          offset, attr_len, ENC_ASCII|ENC_NA);
+                          offset, attr_len, ENC_ASCII);
       offset += attr_len;
       break;
     default:
@@ -16960,7 +16968,7 @@ dissect_owe_transition_mode(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     return offset;
   }
 
-  proto_tree_add_item(tree, hf_ieee80211_wfa_ie_owe_ssid, tvb, offset, ssid_len, ENC_ASCII|ENC_NA);
+  proto_tree_add_item(tree, hf_ieee80211_wfa_ie_owe_ssid, tvb, offset, ssid_len, ENC_ASCII);
   offset  += len;
   len -= len;
 
@@ -17145,7 +17153,7 @@ dissect_mbo_oce(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data 
     case OCE_RNR_COMPLETENESS:
       while (attr_len >= 4) {
         proto_tree_add_item(attr_tree, hf_ieee80211_wfa_ie_oce_rnr_completeness_short_ssid,
-                            tvb, offset, 4, ENC_ASCII|ENC_NA);
+                            tvb, offset, 4, ENC_ASCII);
         offset += 4;
         attr_len -= 4;
         len -= 4;
@@ -17167,7 +17175,7 @@ dissect_mbo_oce(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data 
       }
       while (attr_len >= 4) {
         proto_tree_add_item(attr_tree, hf_ieee80211_wfa_ie_oce_probe_suppr_ssid,
-                            tvb, offset, 4, ENC_ASCII|ENC_NA);
+                            tvb, offset, 4, ENC_ASCII);
         offset += 4;
         attr_len -= 4;
         len -= 4;
@@ -17453,7 +17461,7 @@ dissect_vendor_ie_extreme_mesh(proto_item *item _U_, proto_tree *ietree,
       break;
     case 2:
       {
-         proto_tree_add_item(ietree, hf_ieee80211_extreme_mesh_ie_mesh_id, tvb, offset, tag_len, ENC_ASCII|ENC_NA);
+         proto_tree_add_item(ietree, hf_ieee80211_extreme_mesh_ie_mesh_id, tvb, offset, tag_len, ENC_ASCII);
       }
       break;
     case 3:
@@ -17754,7 +17762,7 @@ dissect_vendor_ie_routerboard(proto_item *item _U_, proto_tree *ietree,
     if(type == 1){
       if(length == 30){
         proto_tree_add_item(subtree, hf_ieee80211_vs_routerboard_subtype1_prefix, tvb, offset, 10, ENC_NA);
-        proto_tree_add_item(subtree, hf_ieee80211_vs_routerboard_subtype1_data, tvb, offset + 10, length - 10, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(subtree, hf_ieee80211_vs_routerboard_subtype1_data, tvb, offset + 10, length - 10, ENC_ASCII);
       }else{
         expert_add_info(pinfo, subitem, &ei_ieee80211_vs_routerboard_unexpected_len);
       }
@@ -18200,11 +18208,90 @@ dissect_vendor_ie_extreme(proto_item *item _U_, proto_tree *ietree,
         length = tag_len;
       }
 
-    proto_tree_add_item(ietree, hf_ieee80211_vs_extreme_ap_name, tvb, offset, length, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(ietree, hf_ieee80211_vs_extreme_ap_name, tvb, offset, length, ENC_ASCII);
 
     break;
     default:
     /* Expert info ? */
+    break;
+  }
+}
+
+#define FORTINET_SYSTEM 10
+static const value_string ieee80211_vs_fortinet_subtype_vals[] = {
+  { FORTINET_SYSTEM, "SYSTEM"},
+  { 0,                 NULL }
+};
+
+#define FORTINET_SYSTEM_APNAME 1
+#define FORTINET_SYSTEM_APMODEL 2
+#define FORTINET_SYSTEM_APSERIAL 3
+static const value_string ieee80211_vs_fortinet_system_type_vals[] = {
+  { FORTINET_SYSTEM_APNAME, "AP NAME"},
+  { FORTINET_SYSTEM_APMODEL, "AP MODEL"},
+  { FORTINET_SYSTEM_APSERIAL, "AP SERIAL"},
+  { 0,                 NULL }
+};
+
+static void
+dissect_vendor_ie_fortinet(proto_item *item, proto_tree *ietree,
+                          tvbuff_t *tvb, int offset, guint32 tag_len)
+{
+  guint32 type;
+
+
+  proto_tree_add_item_ret_uint(ietree, hf_ieee80211_vs_fortinet_subtype, tvb, offset, 2, ENC_LITTLE_ENDIAN, &type);
+  proto_item_append_text(item, ": %s", val_to_str_const(type, ieee80211_vs_fortinet_subtype_vals, "Unknown"));
+  offset += 2;
+  tag_len -= 2;
+
+  switch (type) {
+  case FORTINET_SYSTEM:
+    while (tag_len > 2) {
+      guint32 system_type, system_length;
+
+      proto_tree_add_item_ret_uint(ietree, hf_ieee80211_vs_fortinet_system_type, tvb, offset, 1, ENC_NA, &system_type);
+      proto_item_append_text(item, " - %s:", val_to_str_const(system_type, ieee80211_vs_fortinet_system_type_vals, "Unknown"));
+      offset += 1;
+      tag_len -= 1;
+
+      proto_tree_add_item_ret_uint(ietree, hf_ieee80211_vs_fortinet_system_length, tvb, offset, 1, ENC_NA, &system_length);
+      offset += 1;
+      tag_len -= 1;
+
+      switch (system_type) {
+        case FORTINET_SYSTEM_APNAME:{
+          const guint8* name;
+          proto_tree_add_item_ret_string(ietree, hf_ieee80211_vs_fortinet_system_apname, tvb,
+                               offset, system_length, ENC_ASCII|ENC_NA, wmem_packet_scope(), &name);
+          proto_item_append_text(item, " %s", name);
+        }
+        break;
+        case FORTINET_SYSTEM_APMODEL:{
+          const guint8* model;
+          proto_tree_add_item_ret_string(ietree, hf_ieee80211_vs_fortinet_system_apmodel, tvb,
+                               offset, system_length, ENC_ASCII|ENC_NA, wmem_packet_scope(), &model);
+          proto_item_append_text(item, " %s", model);
+        }
+        break;
+        case FORTINET_SYSTEM_APSERIAL:{
+          const guint8* serial;
+          proto_tree_add_item_ret_string(ietree, hf_ieee80211_vs_fortinet_system_apserial, tvb,
+                               offset, system_length, ENC_ASCII|ENC_NA, wmem_packet_scope(), &serial);
+          proto_item_append_text(item, " %s", serial);
+        }
+        break;
+      }
+      offset += system_length;
+      tag_len -= system_length;
+    }
+    break;
+
+  default:
+    proto_tree_add_item(ietree, hf_ieee80211_vs_fortinet_data, tvb, offset,
+      tag_len, ENC_NA);
+    if (tag_len > 0)
+      proto_item_append_text(item, " (Data: %s)", tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, tag_len));
     break;
   }
 }
@@ -18339,7 +18426,7 @@ set_conversation_last_akm_suite(ieee80211_conversation_data_t *conv,
 
 /*
  * 7.3.2.25 RSNE information element. Common format with OSEN except the
- * verison... should refactor
+ * version... should refactor
  */
 static int
 dissect_rsn_ie(packet_info *pinfo, proto_tree *tree, tvbuff_t *tvb,
@@ -19447,7 +19534,7 @@ dissect_ssid_list(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void*
     proto_tree_add_uint(entry, hf_ieee80211_tag_length, tvb, offset, 1, len);
     offset++;
     proto_tree_add_item(entry, hf_ieee80211_tag_ssid, tvb, offset, len,
-                        ENC_ASCII|ENC_NA);
+                        ENC_ASCII);
     offset += len;
   }
 
@@ -22067,7 +22154,7 @@ dissect_time_zone(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void*
   int offset = 0;
 
   proto_tree_add_item(tree, hf_ieee80211_tag_time_zone, tvb, offset, tag_len,
-                      ENC_ASCII|ENC_NA);
+                      ENC_ASCII);
   return tvb_captured_length(tvb);
 }
 
@@ -23780,6 +23867,9 @@ dissect_ista_availability_window(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tr
   int avail_bits_offset;
   gint8 bits;
 
+  memset(avail_string, 0x0, sizeof(avail_string));
+  memset(pad_string, 0x0, sizeof(pad_string));
+
   /* These are at the same level as the avail bits */
   proto_tree_add_item(tree, hf_ieee80211_ftm_ista_availability_count,
                       tvb, offset, 2, ENC_LITTLE_ENDIAN);
@@ -24300,7 +24390,7 @@ ieee80211_tag_ssid(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* da
     Dot11DecryptSetLastSSID(&dot11decrypt_ctx, (CHAR *) ssid, ssid_len);
   }
   proto_tree_add_item(tree, hf_ieee80211_tag_ssid, tvb, offset, tag_len,
-                      ENC_ASCII|ENC_NA);
+                      ENC_ASCII);
 
   if (ssid_len > 0) {
     gchar* s = format_text(wmem_packet_scope(), ssid, ssid_len);
@@ -26582,7 +26672,7 @@ ieee80211_tag_measure_req(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, v
 
        switch (sub_id) {
          case MEASURE_REQ_BEACON_SUB_SSID: /* SSID (0) */
-           proto_tree_add_item(sub_elem_tree, hf_ieee80211_tag_measure_request_beacon_sub_ssid, tvb, offset, sub_length, ENC_ASCII|ENC_NA);
+           proto_tree_add_item(sub_elem_tree, hf_ieee80211_tag_measure_request_beacon_sub_ssid, tvb, offset, sub_length, ENC_ASCII);
            offset += sub_length;
            break;
          case MEASURE_REQ_BEACON_SUB_BRI: /* Beacon Reporting Information (1) */
@@ -27294,7 +27384,7 @@ ieee80211_tag_cisco_ccx1_ckip(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 
   /* The Name of the sending device starts at offset 10 and is up to
      15 or 16 bytes in length, \0 padded */
-  proto_tree_add_item(tree, hf_ieee80211_tag_cisco_ccx1_name, tvb, offset, 16, ENC_ASCII|ENC_NA);
+  proto_tree_add_item(tree, hf_ieee80211_tag_cisco_ccx1_name, tvb, offset, 16, ENC_ASCII);
   offset += 16;
 
   /* Total number off associated clients and repeater access points */
@@ -27383,6 +27473,9 @@ ieee80211_tag_vendor_specific_ie(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
       break;
     case OUI_SGDSN:
       dissect_vendor_ie_sgdsn(field_data->item_tag, tree, tvb, offset, tag_vs_len, pinfo);
+      break;
+    case OUI_FORTINET:
+      dissect_vendor_ie_fortinet(field_data->item_tag, tree, tvb, offset, tag_vs_len);
       break;
 
     default:
@@ -47207,6 +47300,42 @@ proto_register_ieee80211(void)
      {"Data", "wlan.vs.ruckus.data",
        FT_BYTES, BASE_NONE, NULL, 0,
        NULL, HFILL }},
+
+    /* Vendor Specific : Fortinet */
+    {&hf_ieee80211_vs_fortinet_subtype,
+     {"Subtype", "wlan.vs.fortinet.subtype",
+      FT_UINT16, BASE_DEC, VALS(ieee80211_vs_fortinet_subtype_vals), 0,
+      NULL, HFILL }},
+
+    {&hf_ieee80211_vs_fortinet_system_type,
+     {"Type", "wlan.vs.fortinet.system.type",
+      FT_UINT8, BASE_DEC, VALS(ieee80211_vs_fortinet_system_type_vals), 0,
+      NULL, HFILL }},
+
+    {&hf_ieee80211_vs_fortinet_system_length,
+     {"Length", "wlan.vs.fortinet.system.length",
+      FT_UINT8, BASE_DEC, NULL, 0,
+      NULL, HFILL }},
+
+    {&hf_ieee80211_vs_fortinet_system_apname,
+     {"AP Name", "wlan.vs.fortinet.system.ap_name",
+      FT_STRINGZ, BASE_NONE, NULL, 0,
+      NULL, HFILL }},
+
+    {&hf_ieee80211_vs_fortinet_system_apmodel,
+     {"AP Model", "wlan.vs.fortinet.system.ap_model",
+      FT_STRINGZ, BASE_NONE, NULL, 0,
+      NULL, HFILL }},
+
+    {&hf_ieee80211_vs_fortinet_system_apserial,
+     {"AP Serial", "wlan.vs.fortinet.system.ap_serial",
+      FT_STRINGZ, BASE_NONE, NULL, 0,
+      NULL, HFILL }},
+
+    {&hf_ieee80211_vs_fortinet_data,
+     {"Data", "wlan.vs.fortinet.data",
+      FT_BYTES, BASE_NONE, NULL, 0,
+      NULL, HFILL }},
 
     {&hf_ieee80211_tsinfo,
      {"Traffic Stream (TS) Info", "wlan.ts_info",

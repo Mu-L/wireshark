@@ -189,8 +189,12 @@ void ProtocolPreferencesMenu::setModule(const QString module_name)
     module_name_ = module_name;
 
     action = addAction(tr("Open %1 preferences…").arg(long_name));
-    action->setData(QString(module_name));
-    connect(action, SIGNAL(triggered(bool)), this, SLOT(modulePreferencesTriggered()));
+    if (module_->use_gui) {
+        action->setData(QString(module_name));
+        connect(action, SIGNAL(triggered(bool)), this, SLOT(modulePreferencesTriggered()));
+    } else {
+        action->setDisabled(true);
+    }
     addSeparator();
 
     prefs_pref_foreach(module_, add_prefs_menu_item, this);
@@ -237,6 +241,7 @@ void ProtocolPreferencesMenu::addMenuItem(preference *pref)
     case PREF_RANGE:
     case PREF_DECODE_AS_UINT:
     case PREF_DECODE_AS_RANGE:
+    case PREF_PASSWORD:
     {
         EditorPreferenceAction *epa = new EditorPreferenceAction(pref, this);
         addAction(epa);
