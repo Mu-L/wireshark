@@ -62,19 +62,11 @@ ProtoTree::ProtoTree(QWidget *parent, epan_dissect_t *edt_fixed) :
     setHeaderHidden(true);
 
 #if !defined(Q_OS_WIN)
-#if defined(Q_OS_MAC)
-    QPalette default_pal = QApplication::palette();
-    default_pal.setCurrentColorGroup(QPalette::Active);
-    QColor hover_color = default_pal.highlight().color();
-#else
-    QColor hover_color = ColorUtils::alphaBlend(palette().window(), palette().highlight(), 0.5);
-#endif
-
     setStyleSheet(QString(
         "QTreeView:item:hover {"
         "  background-color: %1;"
         "  color: palette(text);"
-        "}").arg(hover_color.name(QColor::HexArgb)));
+        "}").arg(ColorUtils::hoverBackground().name(QColor::HexArgb)));
 #endif
 
     // Shrink down to a small but nonzero size in the main splitter.
@@ -221,7 +213,7 @@ void ProtoTree::ctxOpenUrlWiki()
 
         if (ret != QMessageBox::Yes) return;
 
-        url = QString(WS_WIKI_URL("Protocols/%1")).arg(proto_abbrev);
+        url = QString(WS_WIKI_URL("%1")).arg(proto_abbrev);
     }
     else
     {
@@ -364,16 +356,16 @@ void ProtoTree::contextMenuEvent(QContextMenuEvent *event)
 
         ctx_menu.addAction(window()->findChild<QAction *>("actionGoGoToLinkedPacket"));
         ctx_menu.addAction(window()->findChild<QAction *>("actionContextShowLinkedPacketInNewWindow"));
-
-        // The "text only" header field will not give preferences for the selected protocol.
-        // Use parent in this case.
-        proto_node *node = proto_tree_model_->protoNodeFromIndex(index).protoNode();
-        while (node && node->finfo && node->finfo->hfinfo && node->finfo->hfinfo->id == hf_text_only)
-            node = node->parent;
-
-        FieldInformation pref_finfo(node);
-        proto_prefs_menu_.setModule(pref_finfo.moduleName());
     }
+
+    // The "text only" header field will not give preferences for the selected protocol.
+    // Use parent in this case.
+    proto_node *node = proto_tree_model_->protoNodeFromIndex(index).protoNode();
+    while (node && node->finfo && node->finfo->hfinfo && node->finfo->hfinfo->id == hf_text_only)
+        node = node->parent;
+
+    FieldInformation pref_finfo(node);
+    proto_prefs_menu_.setModule(pref_finfo.moduleName());
 
     ctx_menu.exec(event->globalPos());
 }
