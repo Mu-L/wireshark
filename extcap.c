@@ -883,8 +883,14 @@ static gboolean cb_preference(extcap_callback_info_t cb_info)
                             *arg->pref_valptr = arg->default_complex->_val;
                         }
 
-                        prefs_register_string_preference(dev_module, pref_name_for_prefs,
+                        if (arg->arg_type == EXTCAP_ARG_PASSWORD)
+                        {
+                            prefs_register_password_preference(dev_module, pref_name_for_prefs,
                                                          pref_title, pref_title, (const char **)arg->pref_valptr);
+                        } else {
+                            prefs_register_string_preference(dev_module, pref_name_for_prefs,
+                                                         pref_title, pref_title, (const char **)arg->pref_valptr);
+                        }
                     }
                     else
                     {
@@ -1541,13 +1547,13 @@ static gboolean extcap_create_pipe(const gchar *ifname, gchar **fifo, HANDLE *ha
     return TRUE;
 }
 #else
-static gboolean extcap_create_pipe(const gchar *ifname, gchar **fifo, const gchar *pipe_prefix)
+static gboolean extcap_create_pipe(const gchar *ifname, gchar **fifo, const gchar *temp_dir, const gchar *pipe_prefix)
 {
     gchar *temp_name = NULL;
     int fd = 0;
 
     gchar *pfx = g_strconcat(pipe_prefix, "_", ifname, NULL);
-    if ((fd = create_tempfile(&temp_name, pfx, NULL, NULL)) < 0)
+    if ((fd = create_tempfile(temp_dir, &temp_name, pfx, NULL, NULL)) < 0)
     {
         g_free(pfx);
         return FALSE;
@@ -1605,11 +1611,15 @@ extcap_init_interfaces(capture_options *capture_opts)
             extcap_create_pipe(interface_opts->name, &interface_opts->extcap_control_in,
 #ifdef _WIN32
                                &interface_opts->extcap_control_in_h,
+#else
+                               capture_opts->temp_dir,
 #endif
                                EXTCAP_CONTROL_IN_PREFIX);
             extcap_create_pipe(interface_opts->name, &interface_opts->extcap_control_out,
 #ifdef _WIN32
                                &interface_opts->extcap_control_out_h,
+#else
+                               capture_opts->temp_dir,
 #endif
                                EXTCAP_CONTROL_OUT_PREFIX);
         }
@@ -1618,6 +1628,8 @@ extcap_init_interfaces(capture_options *capture_opts)
         if (!extcap_create_pipe(interface_opts->name, &interface_opts->extcap_fifo,
 #ifdef _WIN32
                                 &interface_opts->extcap_pipe_h,
+#else
+                               capture_opts->temp_dir,
 #endif
                                 EXTCAP_PIPE_PREFIX))
         {

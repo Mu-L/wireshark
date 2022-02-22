@@ -52,6 +52,7 @@ static int hf_mac_nr_subheader_reserved = -1;
 static int hf_mac_nr_subheader_f = -1;
 static int hf_mac_nr_subheader_length_1_byte = -1;
 static int hf_mac_nr_subheader_length_2_bytes = -1;
+static int hf_mac_nr_lcid = -1;
 static int hf_mac_nr_ulsch_lcid = -1;
 static int hf_mac_nr_dlsch_lcid = -1;
 static int hf_mac_nr_dlsch_sdu = -1;
@@ -1246,7 +1247,7 @@ static void dissect_rar(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree,
         /* Subheader */
         proto_item *subheader_ti = proto_tree_add_item(tree,
                                                        hf_mac_nr_rar_subheader,
-                                                       tvb, offset, 0, ENC_ASCII|ENC_NA);
+                                                       tvb, offset, 0, ENC_ASCII);
         proto_tree *rar_subheader_tree = proto_item_add_subtree(subheader_ti, ett_mac_nr_rar_subheader);
 
         /* Note extension & T bits */
@@ -1377,7 +1378,7 @@ static proto_item* dissect_me_phr_ph(tvbuff_t *tvb, packet_info *pinfo _U_, prot
     /* Subtree for this entry */
     proto_item *entry_ti = proto_tree_add_item(tree,
                                                hf_mac_nr_control_me_phr_entry,
-                                               tvb, *offset, 0, ENC_ASCII|ENC_NA);
+                                               tvb, *offset, 0, ENC_ASCII);
     proto_tree *entry_tree = proto_item_add_subtree(entry_ti, ett_mac_nr_me_phr_entry);
 
     /* P */
@@ -1592,7 +1593,7 @@ static void dissect_ulsch_or_dlsch(tvbuff_t *tvb, packet_info *pinfo, proto_tree
         /* Subheader */
         proto_item *subheader_ti = proto_tree_add_item(tree,
                                                        hf_mac_nr_subheader,
-                                                       tvb, offset, 0, ENC_ASCII|ENC_NA);
+                                                       tvb, offset, 0, ENC_ASCII);
         proto_tree *subheader_tree = proto_item_add_subtree(subheader_ti, ett_mac_nr_subheader);
 
 
@@ -1612,11 +1613,14 @@ static void dissect_ulsch_or_dlsch(tvbuff_t *tvb, packet_info *pinfo, proto_tree
             proto_tree_add_item_ret_boolean(subheader_tree, hf_mac_nr_subheader_f, tvb, offset, 1, ENC_BIG_ENDIAN, &F);
         }
 
-        /* LCID */
+        /* LCID (UL or DL) */
         proto_tree_add_uint(subheader_tree,
                             (p_mac_nr_info->direction == DIRECTION_UPLINK) ?
                                   hf_mac_nr_ulsch_lcid : hf_mac_nr_dlsch_lcid,
                             tvb, offset, 1, lcid);
+        /* Also add as a hidden, direction-less field */
+        proto_item *bi_di_lcid = proto_tree_add_uint(subheader_tree, hf_mac_nr_lcid, tvb, offset, 1, lcid);
+        proto_item_set_hidden(bi_di_lcid);
         offset++;
 
         if (!fixed_len) {
@@ -2966,6 +2970,13 @@ void proto_register_mac_nr(void)
             { "SDU Length",
               "mac-nr.subheader.sdu-length", FT_UINT16, BASE_DEC, NULL, 0x0,
               NULL, HFILL
+            }
+        },
+        /* Will be hidden, but useful for bi-directional filtering */
+        { &hf_mac_nr_lcid,
+            { "LCID",
+              "mac-nr.lcid", FT_UINT8, BASE_HEX, NULL, 0x3f,
+              "Logical Channel Identifier", HFILL
             }
         },
         { &hf_mac_nr_ulsch_lcid,

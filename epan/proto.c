@@ -15,6 +15,7 @@
 #include <string.h>
 #include <glib.h>
 #include <float.h>
+#include <inttypes.h>
 #include <errno.h>
 
 #include <wsutil/bits_ctz.h>
@@ -446,6 +447,9 @@ static const char *reserved_filter_names[] = {
 	/* Display filter keywords. */
 	"eq",
 	"ne",
+	"all_eq",
+	"any_eq",
+	"all_ne",
 	"any_ne",
 	"gt",
 	"ge",
@@ -523,7 +527,7 @@ proto_init(GSList *register_all_plugin_protocols_list,
 
 	proto_reserved_filter_names = g_hash_table_new(g_str_hash, g_str_equal);
 	for (const char **ptr = reserved_filter_names; *ptr != NULL; ptr++) {
-		/* GHashTable has no key destructor. */
+		/* GHashTable has no key destructor so the cast is safe. */
 		g_hash_table_add(proto_reserved_filter_names, *(char **)ptr);
 	}
 
@@ -1081,7 +1085,18 @@ hfinfo_format_bytes(wmem_allocator_t *scope, const header_field_info *hfinfo,
 	gboolean is_printable;
 
 	if (bytes) {
-		if (hfinfo->display & BASE_SHOW_ASCII_PRINTABLE) {
+		if (hfinfo->display & BASE_SHOW_UTF_8_PRINTABLE) {
+			/*
+			 * If all bytes are valid and printable UTF-8, show the
+			 * bytes as a string - in quotes to indicate that it's
+			 * a string.
+			 */
+			if (isprint_utf8_string(bytes, length)) {
+				str = wmem_strdup_printf(scope, "\"%.*s\"",
+				    (int)length, bytes);
+				return str;
+			}
+		} else if (hfinfo->display & BASE_SHOW_ASCII_PRINTABLE) {
 			/*
 			 * Check whether all bytes are printable.
 			 */
@@ -3884,7 +3899,7 @@ proto_tree_add_item_ret_time_string(proto_tree *tree, int hfindex,
 	switch (hfinfo->type) {
 	case FT_ABSOLUTE_TIME:
 		get_time_value(tree, tvb, start, length, encoding, &time_stamp, FALSE);
-		*retval = abs_time_to_str(scope, &time_stamp, (absolute_time_display_e)hfinfo->display, TRUE);
+		*retval = abs_time_to_str(scope, &time_stamp, hfinfo->display, TRUE);
 		break;
 	case FT_RELATIVE_TIME:
 		get_time_value(tree, tvb, start, length, encoding, &time_stamp, TRUE);
@@ -6138,6 +6153,9 @@ get_full_length(header_field_info *hfinfo, tvbuff_t *tvb, const gint start,
 	case FT_UINT_BYTES:
 		n = get_uint_value(NULL, tvb, start, length, encoding);
 		item_length += n;
+		if ((int)item_length < length) {
+			THROW(ReportedBoundsError);
+		}
 		break;
 
 	/* XXX - make these just FT_UINT? */
@@ -6217,6 +6235,9 @@ get_full_length(header_field_info *hfinfo, tvbuff_t *tvb, const gint start,
 	case FT_UINT_STRING:
 		n = get_uint_value(NULL, tvb, start, length, encoding & ~ENC_CHARENCODING_MASK);
 		item_length += n;
+		if ((int)item_length < length) {
+			THROW(ReportedBoundsError);
+		}
 		break;
 
 	case FT_STRINGZPAD:
@@ -6426,7 +6447,7 @@ proto_item_fill_display_label(field_info *finfo, gchar *display_label_str, const
 			break;
 
 		case FT_ABSOLUTE_TIME:
-			tmp_str = abs_time_to_str(NULL, (const nstime_t *)fvalue_get(&finfo->value), (absolute_time_display_e)hfinfo->display, TRUE);
+			tmp_str = abs_time_to_str(NULL, (const nstime_t *)fvalue_get(&finfo->value), hfinfo->display, TRUE);
 			label_len = protoo_strlcpy(display_label_str, tmp_str, label_str_size);
 			wmem_free(NULL, tmp_str);
 			break;
@@ -7348,14 +7369,14 @@ static void
 check_protocol_filter_name_or_fail(const char *filter_name)
 {
 	if (proto_check_field_name(filter_name) != '\0') {
-		ws_error("Protocol filter name \"%s\" has one or more invalid characters."
+		REPORT_DISSECTOR_BUG("Protocol filter name \"%s\" has one or more invalid characters."
 			" Allowed are letters, digits, '-', '_' and non-repeating '.'."
 			" This might be caused by an inappropriate plugin or a development error.", filter_name);
 	}
 
 	/* Check for reserved keywords. */
 	if (g_hash_table_contains(proto_reserved_filter_names, filter_name)) {
-		ws_error("Protocol filter name \"%s\" is invalid because it is a reserved keyword."
+		REPORT_DISSECTOR_BUG("Protocol filter name \"%s\" is invalid because it is a reserved keyword."
 			" This might be caused by an inappropriate plugin or a development error.", filter_name);
 	}
 }
@@ -7377,19 +7398,19 @@ proto_register_protocol(const char *name, const char *short_name,
 
 	if (g_hash_table_lookup(proto_names, name)) {
 		/* ws_error will terminate the program */
-		ws_error("Duplicate protocol name \"%s\"!"
+		REPORT_DISSECTOR_BUG("Duplicate protocol name \"%s\"!"
 			" This might be caused by an inappropriate plugin or a development error.", name);
 	}
 
 	if (g_hash_table_lookup(proto_short_names, short_name)) {
-		ws_error("Duplicate protocol short_name \"%s\"!"
+		REPORT_DISSECTOR_BUG("Duplicate protocol short_name \"%s\"!"
 			" This might be caused by an inappropriate plugin or a development error.", short_name);
 	}
 
 	check_protocol_filter_name_or_fail(filter_name);
 
 	if (g_hash_table_lookup(proto_filter_names, filter_name)) {
-		ws_error("Duplicate protocol filter_name \"%s\"!"
+		REPORT_DISSECTOR_BUG("Duplicate protocol filter_name \"%s\"!"
 			" This might be caused by an inappropriate plugin or a development error.", filter_name);
 	}
 
@@ -7441,11 +7462,11 @@ proto_register_protocol_in_name_only(const char *name, const char *short_name, c
 	 * Just register it in a list and make a hf_ field from it
 	 */
 	if ((field_type != FT_PROTOCOL) && (field_type != FT_BYTES)) {
-		ws_error("Pino \"%s\" must be of type FT_PROTOCOL or FT_BYTES.", name);
+		REPORT_DISSECTOR_BUG("Pino \"%s\" must be of type FT_PROTOCOL or FT_BYTES.", name);
 	}
 
 	if (parent_proto < 0) {
-		ws_error("Must have a valid parent protocol for helper protocol \"%s\"!"
+		REPORT_DISSECTOR_BUG("Must have a valid parent protocol for helper protocol \"%s\"!"
 			" This might be caused by an inappropriate plugin or a development error.", name);
 	}
 
@@ -7922,8 +7943,8 @@ proto_register_field_array(const int parent, hf_register_info *hf, const int num
 		 * from "proto_register_field_init()").
 		 */
 		if (*ptr->p_id != -1 && *ptr->p_id != 0) {
-			fprintf(stderr,
-				"Duplicate field detected in call to proto_register_field_array: %s is already registered\n",
+			REPORT_DISSECTOR_BUG(
+				"Duplicate field detected in call to proto_register_field_array: %s is already registered",
 				ptr->hfinfo.abbrev);
 			return;
 		}
@@ -8187,22 +8208,28 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 	if (!hfinfo->name || !hfinfo->name[0]) {
 		if (hfinfo->abbrev)
 			/* Try to identify the field */
-			ws_error("Field (abbrev='%s') does not have a name\n",
+			REPORT_DISSECTOR_BUG("Field (abbrev='%s') does not have a name",
 				hfinfo->abbrev);
 		else
 			/* Hum, no luck */
-			ws_error("Field does not have a name (nor an abbreviation)\n");
+			REPORT_DISSECTOR_BUG("Field does not have a name (nor an abbreviation)");
 	}
 
 	/* fields with an empty string for an abbreviation aren't filterable */
 	if (!hfinfo->abbrev || !hfinfo->abbrev[0])
-		ws_error("Field '%s' does not have an abbreviation\n", hfinfo->name);
+		REPORT_DISSECTOR_BUG("Field '%s' does not have an abbreviation", hfinfo->name);
 
 	/*  These types of fields are allowed to have value_strings,
 	 *  true_false_strings or a protocol_t struct
 	 */
 	if (hfinfo->strings != NULL) {
 		switch (hfinfo->type) {
+
+		/*
+		 * These types are allowed to support display value_strings,
+		 * value64_strings, the extended versions of the previous
+		 * two, range strings, or unit strings.
+		 */
 		case FT_CHAR:
 		case FT_UINT8:
 		case FT_UINT16:
@@ -8222,24 +8249,44 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 		case FT_INT64:
 		case FT_BOOLEAN:
 		case FT_PROTOCOL:
+			break;
+
+		/*
+		 * This is allowed to have a value of type
+		 * enum ft_framenum_type to indicate what relationship
+		 * the frame in question has to the frame in which
+		 * the field is put.
+		 */
 		case FT_FRAMENUM:
 			break;
+
+		/*
+		 * These types are allowed to support only unit strings.
+		 */
 		case FT_FLOAT:
 		case FT_DOUBLE:
-			//allowed to support string if its a unit decsription
-			if (hfinfo->display & BASE_UNIT_STRING)
-				break;
+			if (!(hfinfo->display & BASE_UNIT_STRING)) {
+				REPORT_DISSECTOR_BUG("Field '%s' (%s) has a non-unit-strings 'strings' value but is of type %s"
+					" (which is only allowed to have unit strings)",
+					hfinfo->name, hfinfo->abbrev, ftype_name(hfinfo->type));
+			}
+			break;
 
-			//fallthrough
+		/*
+		 * This type is only allowed to support a string if it's
+		 * a protocol (for pinos).
+		 */
 		case FT_BYTES:
-			//allowed to support string if its a protocol (for pinos)
-			if (hfinfo->display & BASE_PROTOCOL_INFO)
-				break;
+			if (!(hfinfo->display & BASE_PROTOCOL_INFO)) {
+				REPORT_DISSECTOR_BUG("Field '%s' (%s) has a non-protocol-info 'strings' value but is of type %s"
+					" (which is only allowed to have protocol-info strings)",
+					hfinfo->name, hfinfo->abbrev, ftype_name(hfinfo->type));
+			}
+			break;
 
-			//fallthrough
 		default:
-			ws_error("Field '%s' (%s) has a 'strings' value but is of type %s"
-				" (which is not allowed to have strings)\n",
+			REPORT_DISSECTOR_BUG("Field '%s' (%s) has a 'strings' value but is of type %s"
+				" (which is not allowed to have strings)",
 				hfinfo->name, hfinfo->abbrev, ftype_name(hfinfo->type));
 		}
 	}
@@ -8298,7 +8345,7 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 
 			do {
 				if (this_it->value_max < this_it->value_min) {
-					ws_warning("value_range_string error:  %s (%s) entry for \"%s\" - max(%u 0x%x) is less than min(%u 0x%x)",
+					ws_warning("value_range_string error:  %s (%s) entry for \"%s\" - max(%"PRIu64" 0x%"PRIx64") is less than min(%"PRIu64" 0x%"PRIx64")",
 							  hfinfo->name, hfinfo->abbrev,
 							  this_it->strptr,
 							  this_it->value_max, this_it->value_max,
@@ -8311,7 +8358,7 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 					/* Not OK if this one is completely hidden by an earlier one! */
 					if ((prev_it->value_min <= this_it->value_min) && (prev_it->value_max >= this_it->value_max)) {
 						ws_warning("value_range_string error:  %s (%s) hidden by earlier entry "
-								  "(prev=\"%s\":  %u 0x%x -> %u 0x%x)  (this=\"%s\":  %u 0x%x -> %u 0x%x)",
+								  "(prev=\"%s\":  %"PRIu64" 0x%"PRIx64" -> %"PRIu64" 0x%"PRIx64")  (this=\"%s\":  %"PRIu64" 0x%"PRIx64" -> %"PRIu64" 0x%"PRIx64")",
 								  hfinfo->name, hfinfo->abbrev,
 								  prev_it->strptr, prev_it->value_min, prev_it->value_min,
 								  prev_it->value_max, prev_it->value_max,
@@ -8344,7 +8391,7 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 					break;
 				case BASE_NONE:
 					if (hfinfo->strings == NULL)
-						ws_error("Field '%s' (%s) is an integral value (%s)"
+						REPORT_DISSECTOR_BUG("Field '%s' (%s) is an integral value (%s)"
 							" but is being displayed as BASE_NONE but"
 							" without a strings conversion",
 							hfinfo->name, hfinfo->abbrev,
@@ -8352,14 +8399,14 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 					break;
 				default:
 					tmp_str = val_to_str_wmem(NULL, hfinfo->display, hf_display, "(Unknown: 0x%x)");
-					ws_error("Field '%s' (%s) is a character value (%s)"
-						" but is being displayed as %s\n",
+					REPORT_DISSECTOR_BUG("Field '%s' (%s) is a character value (%s)"
+						" but is being displayed as %s",
 						hfinfo->name, hfinfo->abbrev,
 						ftype_name(hfinfo->type), tmp_str);
 					wmem_free(NULL, tmp_str);
 			}
 			if (hfinfo->display & BASE_UNIT_STRING) {
-				ws_error("Field '%s' (%s) is a character value (%s) but has a unit string\n",
+				REPORT_DISSECTOR_BUG("Field '%s' (%s) is a character value (%s) but has a unit string",
 					hfinfo->name, hfinfo->abbrev,
 					ftype_name(hfinfo->type));
 			}
@@ -8383,7 +8430,7 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 				case BASE_DEC_HEX:
 				case BASE_HEX_DEC:
 					tmp_str = val_to_str_wmem(NULL, hfinfo->display, hf_display, "(Bit count: %d)");
-					ws_error("Field '%s' (%s) is signed (%s) but is being displayed unsigned (%s)\n",
+					REPORT_DISSECTOR_BUG("Field '%s' (%s) is signed (%s) but is being displayed unsigned (%s)",
 						hfinfo->name, hfinfo->abbrev,
 						ftype_name(hfinfo->type), tmp_str);
 					wmem_free(NULL, tmp_str);
@@ -8400,17 +8447,17 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 			if (IS_BASE_PORT(hfinfo->display)) {
 				tmp_str = val_to_str_wmem(NULL, hfinfo->display, hf_display, "(Unknown: 0x%x)");
 				if (hfinfo->type != FT_UINT16) {
-					ws_error("Field '%s' (%s) has 'display' value %s but it can only be used with FT_UINT16, not %s\n",
+					REPORT_DISSECTOR_BUG("Field '%s' (%s) has 'display' value %s but it can only be used with FT_UINT16, not %s",
 						hfinfo->name, hfinfo->abbrev,
 						tmp_str, ftype_name(hfinfo->type));
 				}
 				if (hfinfo->strings != NULL) {
-					ws_error("Field '%s' (%s) is an %s (%s) but has a strings value\n",
+					REPORT_DISSECTOR_BUG("Field '%s' (%s) is an %s (%s) but has a strings value",
 						hfinfo->name, hfinfo->abbrev,
 						ftype_name(hfinfo->type), tmp_str);
 				}
 				if (hfinfo->bitmask != 0) {
-					ws_error("Field '%s' (%s) is an %s (%s) but has a bitmask\n",
+					REPORT_DISSECTOR_BUG("Field '%s' (%s) is an %s (%s) but has a bitmask",
 						hfinfo->name, hfinfo->abbrev,
 						ftype_name(hfinfo->type), tmp_str);
 				}
@@ -8421,17 +8468,17 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 			if (hfinfo->display == BASE_OUI) {
 				tmp_str = val_to_str_wmem(NULL, hfinfo->display, hf_display, "(Unknown: 0x%x)");
 				if (hfinfo->type != FT_UINT24) {
-					ws_error("Field '%s' (%s) has 'display' value %s but it can only be used with FT_UINT24, not %s\n",
+					REPORT_DISSECTOR_BUG("Field '%s' (%s) has 'display' value %s but it can only be used with FT_UINT24, not %s",
 						hfinfo->name, hfinfo->abbrev,
 						tmp_str, ftype_name(hfinfo->type));
 				}
 				if (hfinfo->strings != NULL) {
-					ws_error("Field '%s' (%s) is an %s (%s) but has a strings value\n",
+					REPORT_DISSECTOR_BUG("Field '%s' (%s) is an %s (%s) but has a strings value",
 						hfinfo->name, hfinfo->abbrev,
 						ftype_name(hfinfo->type), tmp_str);
 				}
 				if (hfinfo->bitmask != 0) {
-					ws_error("Field '%s' (%s) is an %s (%s) but has a bitmask\n",
+					REPORT_DISSECTOR_BUG("Field '%s' (%s) is an %s (%s) but has a bitmask",
 						hfinfo->name, hfinfo->abbrev,
 						ftype_name(hfinfo->type), tmp_str);
 				}
@@ -8459,14 +8506,14 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 					break;
 				case BASE_NONE:
 					if (hfinfo->strings == NULL) {
-						ws_error("Field '%s' (%s) is an integral value (%s)"
+						REPORT_DISSECTOR_BUG("Field '%s' (%s) is an integral value (%s)"
 							" but is being displayed as BASE_NONE but"
 							" without a strings conversion",
 							hfinfo->name, hfinfo->abbrev,
 							ftype_name(hfinfo->type));
 					}
 					if (hfinfo->display & BASE_SPECIAL_VALS) {
-						ws_error("Field '%s' (%s) is an integral value (%s)"
+						REPORT_DISSECTOR_BUG("Field '%s' (%s) is an integral value (%s)"
 							" that is being displayed as BASE_NONE but"
 							" with BASE_SPECIAL_VALS",
 							hfinfo->name, hfinfo->abbrev,
@@ -8476,8 +8523,8 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 
 				default:
 					tmp_str = val_to_str_wmem(NULL, hfinfo->display, hf_display, "(Unknown: 0x%x)");
-					ws_error("Field '%s' (%s) is an integral value (%s)"
-						" but is being displayed as %s\n",
+					REPORT_DISSECTOR_BUG("Field '%s' (%s) is an integral value (%s)"
+						" but is being displayed as %s",
 						hfinfo->name, hfinfo->abbrev,
 						ftype_name(hfinfo->type), tmp_str);
 					wmem_free(NULL, tmp_str);
@@ -8497,17 +8544,17 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 					break;
 				default:
 					tmp_str = val_to_str_wmem(NULL, hfinfo->display, hf_display, "(Bit count: %d)");
-					ws_error("Field '%s' (%s) is an byte array but is being displayed as %s instead of BASE_NONE, SEP_DOT, SEP_DASH, SEP_COLON, or SEP_SPACE\n",
+					REPORT_DISSECTOR_BUG("Field '%s' (%s) is an byte array but is being displayed as %s instead of BASE_NONE, SEP_DOT, SEP_DASH, SEP_COLON, or SEP_SPACE",
 						hfinfo->name, hfinfo->abbrev, tmp_str);
 					wmem_free(NULL, tmp_str);
 			}
 			if (hfinfo->bitmask != 0)
-				ws_error("Field '%s' (%s) is an %s but has a bitmask\n",
+				REPORT_DISSECTOR_BUG("Field '%s' (%s) is an %s but has a bitmask",
 					hfinfo->name, hfinfo->abbrev,
 					ftype_name(hfinfo->type));
 			//allowed to support string if its a protocol (for pinos)
 			if ((hfinfo->strings != NULL) && (!(hfinfo->display & BASE_PROTOCOL_INFO)))
-				ws_error("Field '%s' (%s) is an %s but has a strings value\n",
+				REPORT_DISSECTOR_BUG("Field '%s' (%s) is an %s but has a strings value",
 					hfinfo->name, hfinfo->abbrev,
 					ftype_name(hfinfo->type));
 			break;
@@ -8516,13 +8563,13 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 		case FT_FRAMENUM:
 			if (hfinfo->display != BASE_NONE) {
 				tmp_str = val_to_str_wmem(NULL, hfinfo->display, hf_display, "(Bit count: %d)");
-				ws_error("Field '%s' (%s) is an %s but is being displayed as %s instead of BASE_NONE\n",
+				REPORT_DISSECTOR_BUG("Field '%s' (%s) is an %s but is being displayed as %s instead of BASE_NONE",
 					hfinfo->name, hfinfo->abbrev,
 					ftype_name(hfinfo->type), tmp_str);
 				wmem_free(NULL, tmp_str);
 			}
 			if (hfinfo->bitmask != 0)
-				ws_error("Field '%s' (%s) is an %s but has a bitmask\n",
+				REPORT_DISSECTOR_BUG("Field '%s' (%s) is an %s but has a bitmask",
 					hfinfo->name, hfinfo->abbrev,
 					ftype_name(hfinfo->type));
 			break;
@@ -8536,12 +8583,12 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 			      hfinfo->display == ABSOLUTE_TIME_NTP_UTC   ||
 			      hfinfo->display == ABSOLUTE_TIME_DOY_UTC)) {
 				tmp_str = val_to_str_wmem(NULL, hfinfo->display, hf_display, "(Bit count: %d)");
-				ws_error("Field '%s' (%s) is a %s but is being displayed as %s instead of as a time\n",
+				REPORT_DISSECTOR_BUG("Field '%s' (%s) is a %s but is being displayed as %s instead of as a time",
 					hfinfo->name, hfinfo->abbrev, ftype_name(hfinfo->type), tmp_str);
 				wmem_free(NULL, tmp_str);
 			}
 			if (hfinfo->bitmask != 0)
-				ws_error("Field '%s' (%s) is an %s but has a bitmask\n",
+				REPORT_DISSECTOR_BUG("Field '%s' (%s) is an %s but has a bitmask",
 					hfinfo->name, hfinfo->abbrev,
 					ftype_name(hfinfo->type));
 			break;
@@ -8557,19 +8604,19 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 
 				default:
 					tmp_str = val_to_str_wmem(NULL, hfinfo->display, hf_display, "(Unknown: 0x%x)");
-					ws_error("Field '%s' (%s) is an string value (%s)"
-						" but is being displayed as %s\n",
+					REPORT_DISSECTOR_BUG("Field '%s' (%s) is an string value (%s)"
+						" but is being displayed as %s",
 						hfinfo->name, hfinfo->abbrev,
 						ftype_name(hfinfo->type), tmp_str);
 					wmem_free(NULL, tmp_str);
 			}
 
 			if (hfinfo->bitmask != 0)
-				ws_error("Field '%s' (%s) is an %s but has a bitmask\n",
+				REPORT_DISSECTOR_BUG("Field '%s' (%s) is an %s but has a bitmask",
 					hfinfo->name, hfinfo->abbrev,
 					ftype_name(hfinfo->type));
 			if (hfinfo->strings != NULL)
-				ws_error("Field '%s' (%s) is an %s but has a strings value\n",
+				REPORT_DISSECTOR_BUG("Field '%s' (%s) is an %s but has a strings value",
 					hfinfo->name, hfinfo->abbrev,
 					ftype_name(hfinfo->type));
 			break;
@@ -8582,8 +8629,8 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 
 				default:
 					tmp_str = val_to_str_wmem(NULL, hfinfo->display, hf_display, "(Unknown: 0x%x)");
-					ws_error("Field '%s' (%s) is an IPv4 value (%s)"
-						" but is being displayed as %s\n",
+					REPORT_DISSECTOR_BUG("Field '%s' (%s) is an IPv4 value (%s)"
+						" but is being displayed as %s",
 						hfinfo->name, hfinfo->abbrev,
 						ftype_name(hfinfo->type), tmp_str);
 					wmem_free(NULL, tmp_str);
@@ -8594,36 +8641,36 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 		case FT_DOUBLE:
 			if (FIELD_DISPLAY(hfinfo->display) != BASE_NONE) {
 				tmp_str = val_to_str_wmem(NULL, hfinfo->display, hf_display, "(Bit count: %d)");
-				ws_error("Field '%s' (%s) is an %s but is being displayed as %s instead of BASE_NONE\n",
+				REPORT_DISSECTOR_BUG("Field '%s' (%s) is an %s but is being displayed as %s instead of BASE_NONE",
 					hfinfo->name, hfinfo->abbrev,
 					ftype_name(hfinfo->type),
 					tmp_str);
 				wmem_free(NULL, tmp_str);
 			}
 			if (hfinfo->bitmask != 0)
-				ws_error("Field '%s' (%s) is an %s but has a bitmask\n",
+				REPORT_DISSECTOR_BUG("Field '%s' (%s) is an %s but has a bitmask",
 					hfinfo->name, hfinfo->abbrev,
 					ftype_name(hfinfo->type));
 			if ((hfinfo->strings != NULL) && (!(hfinfo->display & BASE_UNIT_STRING)))
-				ws_error("Field '%s' (%s) is an %s but has a strings value\n",
+				REPORT_DISSECTOR_BUG("Field '%s' (%s) is an %s but has a strings value",
 					hfinfo->name, hfinfo->abbrev,
 					ftype_name(hfinfo->type));
 			break;
 		default:
 			if (hfinfo->display != BASE_NONE) {
 				tmp_str = val_to_str_wmem(NULL, hfinfo->display, hf_display, "(Bit count: %d)");
-				ws_error("Field '%s' (%s) is an %s but is being displayed as %s instead of BASE_NONE\n",
+				REPORT_DISSECTOR_BUG("Field '%s' (%s) is an %s but is being displayed as %s instead of BASE_NONE",
 					hfinfo->name, hfinfo->abbrev,
 					ftype_name(hfinfo->type),
 					tmp_str);
 				wmem_free(NULL, tmp_str);
 			}
 			if (hfinfo->bitmask != 0)
-				ws_error("Field '%s' (%s) is an %s but has a bitmask\n",
+				REPORT_DISSECTOR_BUG("Field '%s' (%s) is an %s but has a bitmask",
 					hfinfo->name, hfinfo->abbrev,
 					ftype_name(hfinfo->type));
 			if (hfinfo->strings != NULL)
-				ws_error("Field '%s' (%s) is an %s but has a strings value\n",
+				REPORT_DISSECTOR_BUG("Field '%s' (%s) is an %s but has a strings value",
 					hfinfo->name, hfinfo->abbrev,
 					ftype_name(hfinfo->type));
 			break;
@@ -8790,13 +8837,12 @@ proto_register_field_init(header_field_info *hfinfo, const int parent)
 		c = proto_check_field_name(hfinfo->abbrev);
 		if (c) {
 			if (c == '.') {
-				fprintf(stderr, "Invalid leading, duplicated or trailing '.' found in filter name '%s'\n", hfinfo->abbrev);
+				REPORT_DISSECTOR_BUG("Invalid leading, duplicated or trailing '.' found in filter name '%s'", hfinfo->abbrev);
 			} else if (g_ascii_isprint(c)) {
-				fprintf(stderr, "Invalid character '%c' in filter name '%s'\n", c, hfinfo->abbrev);
+				REPORT_DISSECTOR_BUG("Invalid character '%c' in filter name '%s'", c, hfinfo->abbrev);
 			} else {
-				fprintf(stderr, "Invalid byte \\%03o in filter name '%s'\n", c, hfinfo->abbrev);
+				REPORT_DISSECTOR_BUG("Invalid byte \\%03o in filter name '%s'", c, hfinfo->abbrev);
 			}
-			DISSECTOR_ASSERT_NOT_REACHED();
 		}
 
 		/* We allow multiple hfinfo's to be registered under the same
@@ -8878,8 +8924,7 @@ proto_register_subtree_array(gint * const *indices, const int num_indices)
 	 */
 	for (i = 0; i < num_indices; i++, ptr++, num_tree_types++) {
 		if (**ptr != -1) {
-			/* ws_error will terminate the program */
-			ws_error("register_subtree_array: subtree item type (ett_...) not -1 !"
+			REPORT_DISSECTOR_BUG("register_subtree_array: subtree item type (ett_...) not -1 !"
 				" This is a development error:"
 				" Either the subtree item type has already been assigned or"
 				" was not initialized to -1.");
@@ -8994,10 +9039,14 @@ proto_item_fill_label(field_info *fi, gchar *label_str)
 	char		   *addr_str;
 	char		   *tmp;
 
+	if (!label_str) {
+		ws_warning("NULL label_str passed to proto_item_fill_label.");
+		return;
+	}
+
+	label_str[0]= '\0';
+
 	if (!fi) {
-		if (label_str)
-			label_str[0]= '\0';
-		/* XXX: Check validity of hfinfo->type */
 		return;
 	}
 
@@ -9117,7 +9166,7 @@ proto_item_fill_label(field_info *fi, gchar *label_str)
 		}
 
 		case FT_ABSOLUTE_TIME:
-			tmp = abs_time_to_str(NULL, (const nstime_t *)fvalue_get(&fi->value), (absolute_time_display_e)hfinfo->display, TRUE);
+			tmp = abs_time_to_str(NULL, (const nstime_t *)fvalue_get(&fi->value), hfinfo->display, TRUE);
 			label_fill(label_str, 0, hfinfo, tmp);
 			wmem_free(NULL, tmp);
 			break;
@@ -10713,14 +10762,14 @@ proto_registrar_dump_values(void)
 			while (range[vi].strptr) {
 				/* Print in the proper base */
 				if (FIELD_DISPLAY(hfinfo->display) == BASE_HEX) {
-					printf("R\t%s\t0x%x\t0x%x\t%s\n",
+					printf("R\t%s\t0x%"PRIx64"\t0x%"PRIx64"\t%s\n",
 					       hfinfo->abbrev,
 					       range[vi].value_min,
 					       range[vi].value_max,
 					       range[vi].strptr);
 				}
 				else {
-					printf("R\t%s\t%u\t%u\t%s\n",
+					printf("R\t%s\t%"PRIu64"\t%"PRIu64"\t%s\n",
 					       hfinfo->abbrev,
 					       range[vi].value_min,
 					       range[vi].value_max,

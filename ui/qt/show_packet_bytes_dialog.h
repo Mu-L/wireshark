@@ -77,10 +77,12 @@ private:
         ShowAsASCII,
         ShowAsASCIIandControl,
         ShowAsCArray,
+        ShowAsRustArray,
         ShowAsEBCDIC,
         ShowAsHexDump,
         ShowAsHTML,
         ShowAsImage,
+        ShowAsJson,
         ShowAsRAW,
         ShowAsCodec, // Ordered to match the UTF-8 combobox index
         ShowAsYAML,

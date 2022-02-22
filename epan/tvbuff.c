@@ -928,11 +928,11 @@ tvb_memcpy(tvbuff_t *tvb, void *target, const gint offset, size_t length)
 	DISSECTOR_ASSERT(length <= 0x7FFFFFFF);
 	check_offset_length(tvb, offset, (gint) length, &abs_offset, &abs_length);
 
-	if (tvb->real_data) {
+	if (target && tvb->real_data) {
 		return memcpy(target, tvb->real_data + abs_offset, abs_length);
 	}
 
-	if (tvb->ops->tvb_memcpy)
+	if (target && tvb->ops->tvb_memcpy)
 		return tvb->ops->tvb_memcpy(tvb, target, abs_offset, abs_length);
 
 	/*
@@ -974,6 +974,9 @@ tvb_memdup(wmem_allocator_t *scope, tvbuff_t *tvb, const gint offset, size_t len
 	DISSECTOR_ASSERT(tvb && tvb->initialized);
 
 	check_offset_length(tvb, offset, (gint) length, &abs_offset, &abs_length);
+
+	if (abs_length == 0)
+		return NULL;
 
 	duped = wmem_alloc(scope, abs_length);
 	return tvb_memcpy(tvb, duped, abs_offset, abs_length);
@@ -2228,6 +2231,8 @@ tvb_find_guint8_generic(tvbuff_t *tvb, guint abs_offset, guint limit, guint8 nee
 	const guint8 *result;
 
 	ptr = ensure_contiguous(tvb, abs_offset, limit); /* tvb_get_ptr() */
+	if (!ptr)
+		return -1;
 
 	result = (const guint8 *) memchr(ptr, needle, limit);
 	if (!result)
@@ -2330,6 +2335,8 @@ tvb_ws_mempbrk_guint8_generic(tvbuff_t *tvb, guint abs_offset, guint limit, cons
 	const guint8 *result;
 
 	ptr = ensure_contiguous(tvb, abs_offset, limit); /* tvb_get_ptr */
+	if (!ptr)
+		return -1;
 
 	result = ws_mempbrk_exec(ptr, limit, pattern, found_needle);
 	if (!result)
@@ -3864,14 +3871,31 @@ tvb_get_raw_bytes_as_string(tvbuff_t *tvb, const gint offset, char *buffer, size
 gboolean tvb_ascii_isprint(tvbuff_t *tvb, const gint offset, const gint length)
 {
 	const guint8* buf = tvb_get_ptr(tvb, offset, length);
+	guint abs_offset, abs_length = length;
 
-	for (int i = 0; i < length; i++, buf++)
+	if (length == -1) {
+		/* tvb_get_ptr has already checked for exceptions. */
+		compute_offset_and_remaining(tvb, offset, &abs_offset, &abs_length);
+	}
+	for (guint i = 0; i < abs_length; i++, buf++)
 		if (!g_ascii_isprint(*buf))
 			return FALSE;
 
 	return TRUE;
 }
 
+gboolean tvb_utf_8_isprint(tvbuff_t *tvb, const gint offset, const gint length)
+{
+	const guint8* buf = tvb_get_ptr(tvb, offset, length);
+	guint abs_offset, abs_length = length;
+
+	if (length == -1) {
+		/* tvb_get_ptr has already checked for exceptions. */
+		compute_offset_and_remaining(tvb, offset, &abs_offset, &abs_length);
+	}
+
+	return isprint_utf8_string(buf, abs_length);
+}
 
 static ws_mempbrk_pattern pbrk_crlf;
 /*
@@ -4311,6 +4335,7 @@ int tvb_get_token_len(tvbuff_t *tvb, const gint offset, int len, gint *next_offs
 gchar *
 tvb_bytes_to_str_punct(wmem_allocator_t *scope, tvbuff_t *tvb, const gint offset, const gint len, const gchar punct)
 {
+	DISSECTOR_ASSERT(len > 0);
 	return bytes_to_str_punct(scope, ensure_contiguous(tvb, offset, len), len, punct);
 }
 

@@ -839,10 +839,10 @@ dissect_ipopt_security(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
                           tvb, curr_offset, 2, ENC_BIG_ENDIAN);
       curr_offset += 2;
       proto_tree_add_item(field_tree, hf_ip_opt_sec_rfc791_hr,
-                          tvb, curr_offset, 2, ENC_ASCII|ENC_NA);
+                          tvb, curr_offset, 2, ENC_ASCII);
       curr_offset += 2;
       proto_tree_add_item(field_tree, hf_ip_opt_sec_rfc791_tcc,
-                          tvb, curr_offset, 3, ENC_ASCII|ENC_NA);
+                          tvb, curr_offset, 3, ENC_ASCII);
       return curr_offset;
     }
   }
@@ -2723,7 +2723,7 @@ proto_register_ip(void)
         NULL, 0x00000003, NULL, HFILL }},
 
     { &hf_ip_opt_sec_rfc791_sec,
-      { "Security", "ip.opt.sec_rfc791_sec", FT_UINT8, BASE_HEX,
+      { "Security", "ip.opt.sec_rfc791_sec", FT_UINT16, BASE_HEX,
         VALS(secl_rfc791_vals), 0x0, NULL, HFILL }},
 
     { &hf_ip_opt_sec_rfc791_comp,
