@@ -260,6 +260,9 @@
         <Component Id="cmpBluetooth_colorfilters" Guid="*">
           <File Id="filBluetooth_colorfilters" KeyPath="yes" Source="$(var.Profiles.Dir)\Bluetooth\colorfilters" />
         </Component>
+        <Component Id="cmpBluetooth_preferences" Guid="*">
+          <File Id="filBluetooth_preferences" KeyPath="yes" Source="$(var.Profiles.Dir)\Bluetooth\preferences" />
+        </Component>
       </Directory>
       <Directory Id="dirClassic" Name="Classic">
         <Component Id="cmpClassic_colorfilters" Guid="*">
@@ -276,6 +279,7 @@
   <Fragment>
     <ComponentGroup Id="CG.Plugins.ConfigurationProfiles">
       <ComponentRef Id="cmpBluetooth_colorfilters" />
+      <ComponentRef Id="cmpBluetooth_preferences" />
       <ComponentRef Id="cmpClassic_colorfilters" />
       <ComponentRef Id="cmpNoReassembly_preferences" />
     </ComponentGroup>
@@ -560,6 +564,26 @@
     <ComponentGroup Id="CG.Tools.Ciscodump">
       <ComponentRef Id="cmpCiscodump_exe" />
       <ComponentRef Id="cmpCiscodump_html" />
+    </ComponentGroup>
+  </Fragment>
+
+  <!-- Wifidump -->
+  <Fragment>
+    <DirectoryRef Id="dirExtcap">
+      <Component Id="cmpWifidump_exe" Guid="*">
+        <File Id="filWifidump_exe" KeyPath="yes" Source="$(var.Extcap.Dir)\wifidump.exe" />
+      </Component>
+    </DirectoryRef>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="cmpWifidump_html" Guid="*">
+        <File Id="filWifidump_html" KeyPath="yes" Source="$(var.Staging.Dir)\wifidump.html" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+  <Fragment>
+    <ComponentGroup Id="CG.Tools.Wifidump">
+      <ComponentRef Id="cmpWifidump_exe" />
+      <ComponentRef Id="cmpWifidump_html" />
     </ComponentGroup>
   </Fragment>
 

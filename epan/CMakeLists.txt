@@ -92,7 +92,6 @@ set(LIBWIRESHARK_PUBLIC_HEADERS
 	frame_data.h
 	frame_data_sequence.h
 	funnel.h
-	garrayfix.h
 	#geoip_db.h
 	golay.h
 	guid-utils.h
@@ -152,7 +151,6 @@ set(LIBWIRESHARK_PUBLIC_HEADERS
 	timestamp.h
 	timestats.h
 	tfs.h
-	time_fmt.h
 	to_str.h
 	tvbparse.h
 	tvbuff.h
@@ -304,7 +302,7 @@ add_library(epan
 	$<TARGET_OBJECTS:dissector-registration>
 	$<TARGET_OBJECTS:ftypes>
 	$<$<BOOL:${LUA_FOUND}>:$<TARGET_OBJECTS:wslua>>
-	${CMAKE_BINARY_DIR}/image/libwireshark.rc
+	${CMAKE_BINARY_DIR}/resources/libwireshark.rc
 )
 
 set_target_properties(epan PROPERTIES

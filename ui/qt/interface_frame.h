@@ -46,8 +46,8 @@ public:
     void ensureSelectedInterface();
 
 Q_SIGNALS:
-    void showExtcapOptions(QString device_name);
-    void startCapture();
+    void showExtcapOptions(QString device_name, bool startCaptureOnClose);
+    void startCapture(QStringList);
     void itemSelectionChanged();
     void typeSelectionChanged();
 

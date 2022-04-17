@@ -7,7 +7,7 @@ include::../docbook/attributes.adoc[]
 
 == NAME
 
-etwdump - Provide an interface to read ETW
+etwdump - Provide an interface to read Event Tracing for Windows (ETW)
 
 == SYNOPSIS
 
@@ -28,7 +28,7 @@ etwdump - Provide an interface to read ETW
 == DESCRIPTION
 
 *etwdump* is a extcap tool that provides access to a etl file.
-It is only used to display event trace on Windows.
+It is only used to display event traces on Windows.
 
 == OPTIONS
 
@@ -135,7 +135,7 @@ To capture:
 
     etwdump --extcap-interface etwdump --fifo=/tmp/etw.pcapng --capture --params "--p=Microsoft-Windows-Wmbclass-Opn --p=Microsoft-Windows-wmbclass --k=0xff --l=4"
 
-NOTE: To stop capturing CTRL+C/kill/terminate application.
+NOTE: To stop capturing CTRL+C/kill/terminate the application.
 
 == SEE ALSO
 

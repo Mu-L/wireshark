@@ -2739,7 +2739,7 @@ static const guint8 VID_CISCO_FRAG[] = { /* Cisco Fragmentation */
         0x80, 0x00, 0x00, 0x00
 };
 
-static const guint8 VID_CISCO_FLEXVPN_SUPPORTED[] = { /* "FLEXVPN-SUPPORTED" */
+static const guint8 VID_CISCO_FLEXVPN_SUPPORTED[] = { /* FLEXVPN-SUPPORTED */
         0x46, 0x4c, 0x45, 0x58, 0x56, 0x50, 0x4e, 0x2d,
         0x53, 0x55, 0x50, 0x50, 0x4f, 0x52, 0x54, 0x45,
         0x44
@@ -2749,6 +2749,17 @@ static const guint8 VID_CISCO_DELETE_REASON[] = { /* CISCO-DELETE-REASON */
         0x43, 0x49, 0x53, 0x43, 0x4f, 0x2d, 0x44, 0x45,
         0x4c, 0x45, 0x54, 0x45, 0x2d, 0x52, 0x45, 0x41,
         0x53, 0x4f, 0x4e
+};
+
+static const guint8 VID_CISCO_DYNAMIC_ROUTE[] = { /* CISCO-DYNAMIC-ROUTE */
+        0x43, 0x49, 0x53, 0x43, 0x4f, 0x2d, 0x44, 0x59,
+        0x4e, 0x41, 0x4d, 0x49, 0x43, 0x2d, 0x52, 0x4f,
+        0x55, 0x54, 0x45
+};
+
+static const guint8 VID_CISCO_VPN_REV_02[] = { /* CISCO-VPN-REV-02 */
+        0x43, 0x49, 0x53, 0x43, 0x4f, 0x56, 0x50, 0x4e,
+        0x2d, 0x52, 0x45, 0x56, 0x2d, 0x30, 0x32
 };
 
 /* CISCO(COPYRIGHT)&Copyright (c) 2009 Cisco Systems, Inc. */
@@ -3041,6 +3052,8 @@ static const bytes_string vendor_id[] = {
   { VID_CISCO_FRAG2, sizeof(VID_CISCO_FRAG2), "Cisco Fragmentation" },
   { VID_CISCO_FLEXVPN_SUPPORTED, sizeof(VID_CISCO_FLEXVPN_SUPPORTED), "Cisco FlexVPN Supported" },
   { VID_CISCO_DELETE_REASON, sizeof(VID_CISCO_DELETE_REASON), "Cisco Delete Reason Supported"},
+  { VID_CISCO_DYNAMIC_ROUTE, sizeof(VID_CISCO_DYNAMIC_ROUTE), "Cisco Dynamic Route Supported"},
+  { VID_CISCO_VPN_REV_02, sizeof(VID_CISCO_VPN_REV_02), "Cisco VPN Revision 2"},
   { VID_CISCO_COPYRIGHT, sizeof(VID_CISCO_COPYRIGHT), "Cisco Copyright"},
   { VID_CISCO_GRE_MODE, sizeof(VID_CISCO_GRE_MODE), "Cisco GRE Mode Supported"},
   { VID_MS_VID_INITIAL_CONTACT, sizeof(VID_MS_VID_INITIAL_CONTACT), "Microsoft Vid-Initial-Contact" },
@@ -3250,7 +3263,7 @@ dissect_isakmp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
 {
   int             offset      = 0, len;
   isakmp_hdr_t    hdr;
-  proto_item     *ti, *vers_item;
+  proto_item     *ti, *vers_item, *ti_root;
   proto_tree     *isakmp_tree = NULL, *vers_tree;
   int             isakmp_version;
   void*           decr_data   = NULL;
@@ -3272,8 +3285,8 @@ dissect_isakmp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
   else if (tvb_get_ntohl(tvb, ISAKMP_HDR_SIZE-4) < ISAKMP_HDR_SIZE)
     return 0;
 
-  ti = proto_tree_add_item(tree, proto_isakmp, tvb, offset, -1, ENC_NA);
-  isakmp_tree = proto_item_add_subtree(ti, ett_isakmp);
+  ti_root = proto_tree_add_item(tree, proto_isakmp, tvb, offset, -1, ENC_NA);
+  isakmp_tree = proto_item_add_subtree(ti_root, ett_isakmp);
 
   /* RFC3948 2.3 NAT Keepalive packet:
    * 1 byte payload with the value 0xff.
@@ -3446,9 +3459,13 @@ dissect_isakmp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
       dissect_payloads(tvb, isakmp_tree, isakmp_version, hdr.next_payload,
                        offset, len, pinfo, hdr.message_id, !(flags & R_FLAG), decr_data);
     }
+
+    offset += len;
   }
 
-  return tvb_captured_length(tvb);
+  proto_item_set_end(ti_root, tvb, offset);
+
+  return offset;
 }
 
 
@@ -4390,7 +4407,7 @@ dissect_cert(tvbuff_t *tvb, int offset, int length, proto_tree *tree, int isakmp
         offset += 20;
         length -= 20;
 
-        ti_url = proto_tree_add_item(tree, hf_isakmp_cert_x509_url, tvb, offset, length, ENC_ASCII|ENC_NA);
+        ti_url = proto_tree_add_item(tree, hf_isakmp_cert_x509_url, tvb, offset, length, ENC_ASCII);
         proto_item_set_url(ti_url);
         }
         break;
@@ -4859,7 +4876,7 @@ dissect_notif(tvbuff_t *tvb, packet_info *pinfo, int offset, int length, proto_t
             proto_tree_add_item(tree, hf_isakmp_notify_data_redirect_new_resp_gw_ident_ipv6, tvb, offset+2, 16, ENC_NA);
             break;
           case 3:
-            proto_tree_add_item(tree, hf_isakmp_notify_data_redirect_new_resp_gw_ident_fqdn, tvb, offset+2, tvb_get_guint8(tvb,offset+1), ENC_ASCII|ENC_NA);
+            proto_tree_add_item(tree, hf_isakmp_notify_data_redirect_new_resp_gw_ident_fqdn, tvb, offset+2, tvb_get_guint8(tvb,offset+1), ENC_ASCII);
             break;
           default :
             proto_tree_add_item(tree, hf_isakmp_notify_data_redirect_new_resp_gw_ident, tvb, offset+2, tvb_get_guint8(tvb,offset+1), ENC_NA);
@@ -5122,7 +5139,7 @@ dissect_vid(tvbuff_t *tvb, int offset, int length, proto_tree *tree)
   if (length >= 19 && memcmp(pVID, VID_ARUBA_VIA_AUTH_PROFILE, 19) == 0)
   {
     offset += 19;
-    proto_tree_add_item(tree, hf_isakmp_vid_aruba_via_auth_profile, tvb, offset, length-19, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(tree, hf_isakmp_vid_aruba_via_auth_profile, tvb, offset, length-19, ENC_ASCII);
     offset += 4;
   }
 

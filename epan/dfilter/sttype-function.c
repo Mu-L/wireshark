@@ -60,7 +60,7 @@ function_tostr(const void *data, gboolean pretty)
 
 	ws_assert(def);
 
-	g_string_printf(repr, "%s(", def->name);
+	g_string_printf(repr, "%s: ", def->name);
 	while (params != NULL) {
 		ws_assert(params->data);
 		g_string_append(repr, stnode_tostr(params->data, pretty));
@@ -69,7 +69,6 @@ function_tostr(const void *data, gboolean pretty)
 			g_string_append(repr, ", ");
 		}
 	}
-	g_string_append_c(repr, ')');
 
 	return g_string_free(repr, FALSE);
 }
@@ -118,6 +117,33 @@ sttype_function_funcdef(stnode_t *node)
 	stfuncrec = stnode_data(node);
 	ws_assert_magic(stfuncrec, FUNCTION_MAGIC);
 	return stfuncrec->funcdef;
+}
+
+ftenum_t
+sttype_function_retval_ftype(stnode_t *node)
+{
+	function_t	*stfuncrec;
+
+	stfuncrec = stnode_data(node);
+	ws_assert_magic(stfuncrec, FUNCTION_MAGIC);
+	if (stfuncrec->funcdef->retval_ftype != 0)
+		return stfuncrec->funcdef->retval_ftype;
+
+	if (stfuncrec->params) {
+		stnode_t *first_arg = stfuncrec->params->data;
+		return stnode_ftenum(first_arg);
+	}
+	return FT_NONE;
+}
+
+const char *
+sttype_function_name(stnode_t *node)
+{
+	function_t	*stfuncrec;
+
+	stfuncrec = stnode_data(node);
+	ws_assert_magic(stfuncrec, FUNCTION_MAGIC);
+	return stfuncrec->funcdef->name;
 }
 
 /* Get the parameters for a function stnode_t. */

@@ -273,18 +273,24 @@ isprint_string(const gchar *str)
 
 /* Check if an entire UTF-8 string is printable. */
 gboolean
-isprint_utf8_string(const gchar *str, guint length)
+isprint_utf8_string(const gchar *str, const guint length)
 {
-    const char *c;
+    const gchar *strend = str + length;
 
-    if (!g_utf8_validate (str, length, NULL)) {
+    if (!g_utf8_validate(str, length, NULL)) {
         return FALSE;
     }
 
-    for (c = str; *c; c = g_utf8_next_char(c)) {
-        if (!g_unichar_isprint(g_utf8_get_char(c))) {
+    while (str < strend) {
+        /* This returns false for G_UNICODE_CONTROL | G_UNICODE_FORMAT |
+         * G_UNICODE_UNASSIGNED | G_UNICODE_SURROGATE
+         * XXX: Could it be ok to have certain format characters, e.g.
+         * U+00AD SOFT HYPHEN? If so, format_text() should be changed too.
+         */
+        if (!g_unichar_isprint(g_utf8_get_char(str))) {
             return FALSE;
         }
+        str = g_utf8_next_char(str);
     }
 
     return TRUE;
@@ -526,6 +532,40 @@ ws_escape_string(wmem_allocator_t *alloc, const char *string, bool add_quotes)
         *bufp++ = '"';
     *bufp = '\0';
     return buf;
+}
+
+const char *
+ws_strerrorname_r(int errnum, char *buf, size_t buf_size)
+{
+#ifdef HAVE_STRERRORNAME_NP
+    const char *errstr = strerrorname_np(errnum);
+    if (errstr != NULL) {
+        (void)g_strlcpy(buf, errstr, buf_size);
+        return buf;
+    }
+#endif
+    snprintf(buf, buf_size, "Errno(%d)", errnum);
+    return buf;
+}
+
+char *
+ws_strdup_underline(wmem_allocator_t *allocator, long offset, size_t len)
+{
+    if (offset < 0)
+        return NULL;
+
+    wmem_strbuf_t *buf = wmem_strbuf_sized_new(allocator, offset + len, 0);
+
+    for (int i = 0; i < offset; i++) {
+        wmem_strbuf_append_c(buf, ' ');
+    }
+    wmem_strbuf_append_c(buf, '^');
+
+    for (size_t l = len; l > 1; l--) {
+        wmem_strbuf_append_c(buf, '~');
+    }
+
+    return wmem_strbuf_finalize(buf);
 }
 
 /*

@@ -1,6 +1,6 @@
 # xnap.cnf
 # xnap conformation file
-# Copyright 2018-2021 Pascal Quantin
+# Copyright 2018-2022 Pascal Quantin
 
 #.OPT
 PER
@@ -1218,6 +1218,16 @@ id-SCGIndicator                                   ProtocolIE-ID
 id-UESpecificDRX                                  ProtocolIE-ID
 id-PDUSessionExpectedUEActivityBehaviour          ProtocolIE-ID
 id-QoS-Mapping-Information                        ProtocolIE-ID
+id-AdditionLocationInformation                    ProtocolIE-ID
+id-dataForwardingInfoFromTargetE-UTRANnode        ProtocolIE-ID
+id-DirectForwardingPathAvailability               ProtocolIE-ID
+id-SourceNG-RAN-node-ID                           ProtocolIE-ID
+id-SourceDLForwardingIPAddress                    ProtocolIE-ID
+id-SourceNodeDLForwardingIPAddress                ProtocolIE-ID
+id-ExtendedReportIntervalMDT                      ProtocolIE-ID
+id-SecurityIndication                             ProtocolIE-ID
+id-RRCConnReestab-Indicator                       ProtocolIE-ID
+id-TargetNodeID                                   ProtocolIE-ID
 
 #.REGISTER
 
@@ -1400,6 +1410,9 @@ PagingeDRXInformation                             N xnap.ies id-PagingeDRXInform
 CHO-MRDC-EarlyDataForwarding                      N xnap.ies id-CHO-MRDC-EarlyDataForwarding
 SCGIndicator                                      N xnap.ies id-SCGIndicator
 UESpecificDRX                                     N xnap.ies id-UESpecificDRX
+DirectForwardingPathAvailability                  N xnap.ies id-DirectForwardingPathAvailability
+GlobalNG-RANNode-ID                               N xnap.ies id-SourceNG-RAN-node-ID
+GlobalNG-RANNode-ID                               N xnap.ies id-TargetNodeID
 
 #XNAP-PROTOCOL-EXTENSION
 Additional-UL-NG-U-TNLatUPF-List                  N xnap.extension id-Additional-UL-NG-U-TNLatUPF-List
@@ -1477,6 +1490,14 @@ SFN-Offset                                        N xnap.extension id-SFN-Offset
 QoSMonitoringDisabled                             N xnap.extension id-QoSMonitoringDisabled
 ExpectedUEActivityBehaviour                       N xnap.extension id-PDUSessionExpectedUEActivityBehaviour
 QoS-Mapping-Information                           N xnap.extension id-QoS-Mapping-Information
+Cause                                             N xnap.extension id-Cause
+AdditionLocationInformation                       N xnap.extension id-AdditionLocationInformation
+DataForwardingInfoFromTargetE-UTRANnode           N xnap.extension id-dataForwardingInfoFromTargetE-UTRANnode
+TransportLayerAddress                             N xnap.extension id-SourceDLForwardingIPAddress
+TransportLayerAddress                             N xnap.extension id-SourceNodeDLForwardingIPAddress
+ExtendedReportIntervalMDT                         N xnap.extension id-ExtendedReportIntervalMDT
+SecurityIndication                                N xnap.extension id-SecurityIndication
+RRCConnReestab-Indicator                          N xnap.extension id-RRCConnReestab-Indicator
 
 #XNAP-ELEMENTARY-PROCEDURE
 HandoverRequest                            N xnap.proc.imsg id-handoverPreparation

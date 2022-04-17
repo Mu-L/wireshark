@@ -61,6 +61,7 @@ static int hf_per_internal_range = -1;
 static int hf_per_internal_num_bits = -1;
 static int hf_per_internal_min = -1;
 static int hf_per_internal_value = -1;
+static int hf_per_encoding_boiler_plate = -1;
 
 static gint ett_per_open_type = -1;
 static gint ett_per_containing = -1;
@@ -109,6 +110,15 @@ static const true_false_string tfs_small_number_bit = {
 	"The number is large, >63"
 };
 
+void
+add_per_encoded_label(tvbuff_t* tvb, packet_info* pinfo _U_, proto_tree* tree)
+{
+	proto_item* ti;
+
+	ti = proto_tree_add_item(tree, hf_per_encoding_boiler_plate, tvb, 0, -1, ENC_NA);
+	proto_item_set_generated(ti);
+
+}
 
 #define BYTE_ALIGN_OFFSET(offset) if(offset&0x07){offset=(offset&0xfffffff8)+8;}
 
@@ -555,12 +565,16 @@ dissect_per_null(tvbuff_t *tvb, guint32 offset, asn1_ctx_t *actx _U_, proto_tree
 }
 
 /* 19 this function dissects a sequence of */
+// Arbitrary. Allow a sequence of NULLs, but not too many since we might add
+// a hierarchy of tree items per NULL
+#define PER_SEQUENCE_OF_MAX_NULLS 10
 static guint32
 dissect_per_sequence_of_helper(tvbuff_t *tvb, guint32 offset, asn1_ctx_t *actx, proto_tree *tree, per_type_fn func, int hf_index, guint32 length)
 {
 	guint32 i;
 
 DEBUG_ENTRY("dissect_per_sequence_of_helper");
+	guint32 old_offset = offset;
 	for(i=0;i<length;i++){
 		guint32 lold_offset=offset;
 		proto_item *litem;
@@ -570,6 +584,9 @@ DEBUG_ENTRY("dissect_per_sequence_of_helper");
 
 		offset=(*func)(tvb, offset, actx, ltree, hf_index);
 		proto_item_set_len(litem, (offset>>3)!=(lold_offset>>3)?(offset>>3)-(lold_offset>>3):1);
+		if (i >= PER_SEQUENCE_OF_MAX_NULLS-1 && offset <= old_offset) {
+			dissect_per_not_decoded_yet(tree, actx->pinfo, tvb, "too many nulls in sequence");
+		}
 	}
 
 	return offset;
@@ -997,6 +1014,9 @@ dissect_per_any_oid(tvbuff_t *tvb, guint32 offset, asn1_ctx_t *actx, proto_tree 
 	DEBUG_ENTRY("dissect_per_any_oid");
 
 	offset = dissect_per_length_determinant(tvb, offset, actx, tree, hf_per_object_identifier_length, &length, NULL);
+	if(length == 0){
+		dissect_per_not_decoded_yet(tree, actx->pinfo, tvb, "unexpected length");
+	}
 	if (actx->aligned) BYTE_ALIGN_OFFSET(offset);
 	val_tvb = tvb_new_octet_aligned(tvb, offset, length * 8);
 	/* Add new data source if the offet was unaligned */
@@ -1129,6 +1149,10 @@ dissect_per_integer(tvbuff_t *tvb, guint32 offset, asn1_ctx_t *actx, proto_tree 
 	if(length>4){
 		dissect_per_not_decoded_yet(tree, actx->pinfo, tvb, "too long integer(per_integer)");
 		length=4;
+	}
+
+	if(length == 0){
+		dissect_per_not_decoded_yet(tree, actx->pinfo, tvb, "unexpected length");
 	}
 
 	if (actx->aligned) BYTE_ALIGN_OFFSET(offset);
@@ -1661,6 +1685,9 @@ dissect_per_real(tvbuff_t *tvb, guint32 offset, asn1_ctx_t *actx, proto_tree *tr
 	double val = 0;
 
 	offset = dissect_per_length_determinant(tvb, offset, actx, tree, hf_per_real_length, &val_length, NULL);
+	if(val_length == 0){
+		dissect_per_not_decoded_yet(tree, actx->pinfo, tvb, "unexpected length");
+	}
 	if (actx->aligned) BYTE_ALIGN_OFFSET(offset);
 	val_tvb = tvb_new_octet_aligned(tvb, offset, val_length * 8);
 	/* Add new data source if the offet was unaligned */
@@ -2688,6 +2715,9 @@ call_per_oid_callback(const char *oid, tvbuff_t *tvb, packet_info *pinfo, proto_
 
 	start_offset = offset;
 	offset = dissect_per_length_determinant(tvb, offset, actx, tree, hf_per_open_type_length, &type_length, NULL);
+	if(type_length == 0){
+		dissect_per_not_decoded_yet(tree, actx->pinfo, tvb, "unexpected length");
+	}
 	if (actx->aligned) BYTE_ALIGN_OFFSET(offset);
 	end_offset = offset + type_length;
 
@@ -2830,6 +2860,11 @@ proto_register_per(void)
 		  { "Bits", "per.internal.value",
 		    FT_UINT64, BASE_DEC, NULL, 0,
 		    NULL, HFILL }},
+		{ &hf_per_encoding_boiler_plate,
+		  { "PER encoded protocol, to see PER internal fields set protocol PER preferences", "per.encoding_boiler_plate",
+		    FT_NONE, BASE_NONE, NULL, 0x0,
+		    NULL, HFILL } },
+
 	};
 
 	static gint *ett[] = {

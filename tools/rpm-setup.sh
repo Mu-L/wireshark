@@ -11,6 +11,8 @@
 # that way.
 #
 
+set -e -u -o pipefail
+
 if [ "$1" = "--help" ]
 then
 	echo "\nUtility to setup a rpm-based system for Wireshark Development.\n"
@@ -31,6 +33,7 @@ fi
 
 ADDITIONAL=0
 RPMDEPS=0
+OPTIONS=
 for arg; do
 	case $arg in
 		--install-optional)
@@ -169,6 +172,14 @@ add_package BASIC_LIST qt5-qtmultimedia-devel ||
 add_packages BASIC_LIST libqt5-qtmultimedia-devel libQt5PrintSupport-devel ||
 echo "Qt5 is unavailable" >&2
 
+# This in only required on OpenSUSE
+add_package BASIC_LIST libqt5-qtsvg-devel ||
+echo "Qt5 SVG is unavailable" >&2
+
+# This in only required on OpenSUSE
+add_packages BASIC_LIST hicolor-icon-theme xdg-utils ||
+echo "Default icon theme and XDG utils are unavailable" >&2
+
 # This in only required (and available) on OpenSUSE
 add_package BASIC_LIST update-desktop-files ||
 echo "update-desktop-files is unavailable" >&2
@@ -221,9 +232,6 @@ echo "xslt is unavailable" >&2
 
 add_package ADDITIONAL_LIST brotli-devel || add_packages ADDITIONAL_LIST libbrotli-devel libbrotlidec1 ||
 echo "brotli is unavailable" >&2
-
-add_package ADDITIONAL_LIST git-review ||
-echo "git-review is unavailabe" >&2
 
 add_package ADDITIONAL_LIST speexdsp-devel || add_package ADDITIONAL_LIST speex-devel ||
 echo "speex is unavailable" >&2

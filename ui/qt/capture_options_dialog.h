@@ -92,6 +92,7 @@ private slots:
     void itemClicked(QTreeWidgetItem *item, int column);
     void itemDoubleClicked(QTreeWidgetItem *item);
     void changeEvent(QEvent* event);
+    void tempDirBrowseButtonClicked();
 
 signals:
     void startCapture();
@@ -103,7 +104,7 @@ signals:
     void ifsChanged();
     void interfaceListChanged();
     void captureFilterTextEdited(const QString & text);
-    void showExtcapOptions(QString &device_name);
+    void showExtcapOptions(QString &device_name, bool startCaptureOnClose);
 
 private:
     Ui::CaptureOptionsDialog *ui;

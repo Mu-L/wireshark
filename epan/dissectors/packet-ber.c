@@ -79,6 +79,7 @@ static gint hf_ber_id_uni_tag_ext = -1;
 static gint hf_ber_id_tag = -1;
 static gint hf_ber_id_tag_ext = -1;
 static gint hf_ber_length = -1;
+static gint hf_ber_length_octets = -1;
 static gint hf_ber_bitstring_padding = -1;
 static gint hf_ber_bitstring_empty = -1;
 static gint hf_ber_unknown_OID = -1;
@@ -111,6 +112,7 @@ static gint hf_ber_single_ASN1_type = -1;         /* T_single_ASN1_type */
 static gint hf_ber_octet_aligned = -1;            /* OCTET_STRING */
 static gint hf_ber_arbitrary = -1;                /* BIT_STRING */
 static gint hf_ber_extra_data = -1;
+static gint hf_ber_encoding_boiler_plate = -1;
 
 /* Generated from convert_proto_tree_add_text.pl */
 static int hf_ber_seq_of_eoc = -1;
@@ -320,6 +322,16 @@ static const fragment_items octet_string_frag_items = {
     /* Tag */
     "OCTET STRING fragments"
 };
+
+void
+add_ber_encoded_label(tvbuff_t* tvb, packet_info* pinfo _U_, proto_tree* tree)
+{
+    proto_item *ti;
+
+    ti = proto_tree_add_item(tree, hf_ber_encoding_boiler_plate, tvb, 0, -1, ENC_NA);
+    proto_item_set_generated(ti);
+
+}
 
 static void *
 oid_copy_cb(void *dest, const void *orig, size_t len _U_)
@@ -1374,7 +1386,12 @@ dissect_ber_length(packet_info *pinfo _U_, proto_tree *tree, tvbuff_t *tvb, int 
         if (tmp_ind) {
             proto_tree_add_uint_format_value(tree, hf_ber_length, tvb, old_offset, 1, tmp_length, "Indefinite length %d", tmp_length);
         } else {
-            proto_tree_add_uint(tree, hf_ber_length, tvb, old_offset, offset - old_offset, tmp_length);
+            if ((offset - old_offset) > 1) {
+                proto_tree_add_uint(tree, hf_ber_length_octets, tvb, old_offset, 1, (tvb_get_guint8(tvb, old_offset) & 0x7f));
+                proto_tree_add_uint(tree, hf_ber_length, tvb, old_offset+1, offset - (old_offset+1), tmp_length);
+            } else {
+                proto_tree_add_uint(tree, hf_ber_length, tvb, old_offset, offset - old_offset, tmp_length);
+            }
         }
     }
     if (length)
@@ -1832,7 +1849,7 @@ dissect_ber_integer64(gboolean implicit_tag, asn1_ctx_t *actx, proto_tree *tree,
     gint64   val;
     guint32  i;
     gboolean used_too_many_bytes = FALSE;
-    guint8 first;
+    guint8 first = 0;
 #ifdef DEBUG_BER
 {
 const char *name;
@@ -1864,27 +1881,27 @@ proto_tree_add_debug_text(tree, "INTEGERnew dissect_ber_integer(%s) entered impl
       len = remaining>0 ? remaining : 0;
     }
 
-    first = tvb_get_guint8(tvb, offset);
-    /* we can't handle integers > 64 bits */
-    /* take into account the use case of a 64bits unsigned integer: you will have a 9th byte set to 0 */
-    if ((len > 9) || ((len == 9) && (first != 0))) {
-        if (hf_id >= 0) {
-            header_field_info *hfinfo = proto_registrar_get_nth(hf_id);
-
-            /* use the original field only if it is suitable for bytes */
-            if (hfinfo->type != FT_BYTES)
-                hf_id = hf_ber_64bit_uint_as_bytes;
-
-            proto_tree_add_bytes_format(tree, hf_id, tvb, offset, len, NULL,
-                "%s: 0x%s", hfinfo->name, tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, len));
-        }
-
-        offset += len;
-        return offset;
-    }
-
-    val=0;
+    val = 0;
     if (len > 0) {
+
+        first = tvb_get_guint8(tvb, offset);
+        /* we can't handle integers > 64 bits */
+        /* take into account the use case of a 64bits unsigned integer: you will have a 9th byte set to 0 */
+        if ((len > 9) || ((len == 9) && (first != 0))) {
+            if (hf_id >= 0) {
+                header_field_info *hfinfo = proto_registrar_get_nth(hf_id);
+
+                /* use the original field only if it is suitable for bytes */
+                if (hfinfo->type != FT_BYTES)
+                    hf_id = hf_ber_64bit_uint_as_bytes;
+
+                proto_tree_add_bytes_format(tree, hf_id, tvb, offset, len, NULL,
+                                            "%s: 0x%s", hfinfo->name, tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, len));
+            }
+
+            offset += len;
+            return offset;
+        }
         /* extend sign bit for signed fields */
         enum ftenum type  = FT_INT32; /* Default to signed, is this correct? */
         if (hf_id >= 0) {
@@ -1910,15 +1927,14 @@ proto_tree_add_debug_text(tree, "INTEGERnew dissect_ber_integer(%s) entered impl
 
     if (hf_id >= 0) {
         /*  */
+        header_field_info* hfi;
+
+        hfi = proto_registrar_get_nth(hf_id);
         if ((len < 1) || (len > 9) || ((len == 9) && (first != 0))) {
           proto_tree_add_expert_format(
               tree, actx->pinfo, &ei_ber_error_length, tvb, offset-len, len,
-              "BER Error: Can't handle integer length: %u",
-              len);
+              "BER Error: %s: length of item (%u) is not valid", hfi->name, len);
         } else {
-            header_field_info* hfi;
-
-            hfi = proto_registrar_get_nth(hf_id);
             switch (hfi->type) {
             case FT_UINT8:
             case FT_UINT16:
@@ -2026,20 +2042,34 @@ dissect_ber_boolean(gboolean implicit_tag, asn1_ctx_t *actx, proto_tree *tree, t
         offset = dissect_ber_length(actx->pinfo, tree, tvb, offset, &len, NULL);
         /*if (ber_class != BER_CLASS_UNI)*/
     } else {
-        /* nothing to do here, yet */
+        gint32 remaining = tvb_reported_length_remaining(tvb, offset);
+        len = remaining > 0 ? remaining : 0;
     }
 
-    val = tvb_get_guint8(tvb, offset);
-    offset += 1;
+    if (len == 1)
+    {
+        val = tvb_get_guint8(tvb, offset);
+        offset += 1;
 
-    actx->created_item = NULL;
+        actx->created_item = NULL;
 
-    if (hf_id >= 0) {
-        hfi = proto_registrar_get_nth(hf_id);
-        if (hfi->type == FT_BOOLEAN)
-            actx->created_item = proto_tree_add_boolean(tree, hf_id, tvb, offset-1, 1, val);
-        else
-            actx->created_item = proto_tree_add_uint(tree, hf_id, tvb, offset-1, 1, val ? 1 : 0);
+        if (hf_id >= 0) {
+            hfi = proto_registrar_get_nth(hf_id);
+            if (hfi->type == FT_BOOLEAN)
+                actx->created_item = proto_tree_add_boolean(tree, hf_id, tvb, offset-1, 1, val);
+            else
+                actx->created_item = proto_tree_add_uint(tree, hf_id, tvb, offset-1, 1, val ? 1 : 0);
+        }
+    } else {
+        val = 0;
+        actx->created_item = NULL;
+
+        if (hf_id >= 0) {
+            hfi = proto_registrar_get_nth(hf_id);
+            proto_tree_add_expert_format(
+                    tree, actx->pinfo, &ei_ber_error_length, tvb, offset, len,
+                    "BER Error: %s: length of item (%u) is not valid", hfi->name, len);
+        }
     }
 
     if (value) {
@@ -4264,6 +4294,9 @@ proto_register_ber(void)
         { &hf_ber_id_tag_ext, {
                 "Tag", "ber.id.tag", FT_UINT32, BASE_DEC,
                 NULL, 0, "Tag value for non-Universal classes", HFILL }},
+        { &hf_ber_length_octets, {
+                "Length Octets", "ber.length_octets", FT_UINT8, BASE_DEC,
+                NULL, 0, "Number of length octets", HFILL }},
         { &hf_ber_length, {
                 "Length", "ber.length", FT_UINT32, BASE_DEC,
                 NULL, 0, "Length of contents", HFILL }},
@@ -4412,8 +4445,8 @@ proto_register_ber(void)
       { &hf_ber_choice_eoc, { "CHOICE EOC", "ber.choice_eoc", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL }},
       { &hf_ber_seq_of_eoc, { "SEQ OF EOC", "ber.seq_of_eoc", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL }},
       { &hf_ber_64bit_uint_as_bytes, { "64bits unsigned integer", "ber.64bit_uint_as_bytes", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+      { &hf_ber_encoding_boiler_plate, { "BER encoded protocol, to see BER internal fields set protocol BER preferences", "ber.encoding_boiler_plate", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL }},
     };
-
 
     static gint *ett[] = {
         &ett_ber_octet_string,

@@ -67,10 +67,15 @@ abbreviations or through C-like symbols:
 
 The ordering depends on the value type in the usual way (e.g., lexicographic
 for strings and arithmetic for integers.)  A field may appear more than once
-in a given frame.  In general, if any appearance of a field has a value that
-satisfies its operator, then the expression evaluates to true.  The one
-exception is the "!=" operator, which asserts that _all_ appearances of a field
-are not equal to a value, making it the logical negation of the "==" operator.footnote:[This differs from previous, deprecated behavior.  To obtain the old behavior, which was true if any appearance was not equal, use the "any_ne", "~=" operator.]
+in a given frame.  In that case equality can be strict (all fields must match
+the condition) or not (any field must match the condition). The inequality is
+the logical negation of equality. The following table contains all equality
+operators, their aliases and meaning:
+
+    eq, any_eq, ==    Any field must be equal
+    ne, all_ne, !=    All fields must be not equal
+        all_eq, ===   All fields must be equal
+        any_ne, !==   Any fields must be not equal
 
 === Search and match operators
 
@@ -123,6 +128,8 @@ The filter language has the following functions:
     len(field)          - returns the byte length of a string or bytes field
     count(field)        - returns the number of field occurrences in a frame
     string(field)       - converts a non-string field to string
+    max(f1,...,fn)      - return the maximum value
+    min(f1,...,fn)      - return the minimum value
 
 upper() and lower() are useful for performing case-insensitive string
 comparisons. For example:
@@ -138,6 +145,9 @@ byte fields. For example:
     string(frame.number) matches "[13579]$"
 
 gives you all the odd packets.
+
+max() and min() take any number of arguments and returns one value, respectively
+the largest/smallest. The arguments must all have the same type.
 
 === Protocol field types
 
@@ -165,13 +175,14 @@ Each protocol field is typed. The types are:
     Unsigned integer, 1, 2, 3, 4, or 8 bytes
     1-byte ASCII character
 
-An integer may be expressed in decimal, octal, or hexadecimal notation,
+An integer may be expressed in decimal, octal, hexadecimal or binary notation,
 or as a C-style character constant.  The following six display filters
 are equivalent:
 
     frame.len > 10
     frame.len > 012
     frame.len > 0xa
+    frame.len > 0b1010
     frame.len > '\n'
     frame.len > '\x0a'
     frame.len > '\012'
@@ -365,15 +376,15 @@ can be convenient:
     frame[4] == 0xff
     frame[1:4] contains 0x02
 
-=== Bit field operations
+=== Bitwise operators
 
-It is also possible to define tests with bit field operations. Currently the
-following bit field operation is supported:
+It is also possible to define tests with bitwise operations. Currently the
+following bitwise operator is supported:
 
     bitwise_and, &	Bitwise AND
 
-The bitwise AND operation allows testing to see if one or more bits are set.
-Bitwise AND operates on integer protocol fields and slices.
+The bitwise AND operation allows masking bits and testing to see if one or
+more bits are set. Bitwise AND operates on integer protocol fields and slices.
 
 When testing for TCP SYN packets, you can write:
 
@@ -382,27 +393,72 @@ When testing for TCP SYN packets, you can write:
 That expression will match all packets that contain a "tcp.flags" field
 with the 0x02 bit, i.e. the SYN bit, set.
 
-Similarly, filtering for all WSP GET and extended GET methods is achieved with:
+To match locally administered unicast ethernet addresses you can use:
 
-    wsp.pdu_type & 0x40
+    eth.addr[0] & 0x0f == 2
 
 When using slices, the bit mask must be specified as a byte string, and it must
 have the same number of bytes as the slice itself, as in:
 
     ip[42:2] & 40:ff
 
+=== Arithmetic operators
+
+Arithmetic expressions are supported with the usual operators:
+
+    +   Addition
+    -   Subtraction
+    *   Multiplication
+    /   Division
+    %   Modulo (integer remainder)
+
+For example it is possible to filter for UDP destination ports greater or
+equal by one to the source port with the expression:
+
+    udp.dstport >= udp.srcport + 1
+
+It is possible to group arithmetic expressions using curly brackets (parenthesis
+will not work for this):
+
+    tcp.dstport >= 4 * {tcp.srcport + 3}
+
+Do not confuse this usage of curly brackets with set membership.
+
+An unfortunate quirk in the filter syntax is that the subtraction operator
+must be preceded by a space character, so "A-B" must be written as "A -B"
+or "A - B".
+                                   
+=== Protocol field references
+
+A variable using a sigil with the form ${some.proto.field} is called a field
+reference. A field reference is a field value read from the currently
+selected frame in the GUI. This is useful to build dynamic filters such as,
+frames since the last five minutes to the selected frame:
+
+    frame.time_relative >= ${frame.time_relative} - 300
+
+Field references share a similar notation to macros but are distinct
+syntactical elements in the filter language.
+
 === Logical expressions
 
 Tests can be combined using logical expressions.
 These too are expressible in C-like syntax or with English-like
-abbreviations:
+abbreviations. The following table lists the logical operators from
+highest to lowest precedence:
 
-    and, &&   Logical AND
-    or,  ||   Logical OR
-    not, !    Logical NOT
+    not, !    Logical NOT   (right-associative)
+    and, &&   Logical AND   (left-associative)
+    or,  ||   Logical OR    (left-associative)
 
-Expressions can be grouped by parentheses as well.  The following are
-all valid display filter expressions:
+The evaluation is always performed left to right. Expressions can be grouped
+by parentheses as well. The expression "A and B or not C or D and not E or F"
+is read:
+
+    (A and B) or (not C) or (D and (not E)) or F
+
+It's usually better to be explicit about grouping using parenthesis.
+The following are all valid display filter expressions:
 
     tcp.port == 80 and ip.src == 192.168.2.1
     not llc

@@ -7,7 +7,7 @@ include::attributes.adoc[]
 // Asciidoctor Syntax Quick Reference:
 // https://asciidoctor.org/docs/asciidoc-syntax-quick-reference/
 
-This is an experimental release intended to test new features for Wireshark 3.6.
+This is an experimental release intended to test new features for Wireshark 4.0.
 
 == What is Wireshark?
 
@@ -16,8 +16,12 @@ It is used for troubleshooting, analysis, development and education.
 
 == What’s New
 
+// If we expand this to all Win32 packages we should make this more prominent, e.g. with an admonition.
+* We no longer ship Windows Installer (.msi) packages for 32-bit Windows. wsbuglink:17779[]
+
 * The PCRE2 library (https://www.pcre.org/) is now a required dependency to build Wireshark.
-* A compiler with C11 support is required.
+
+* You must now have a compiler with C11 support in order to build Wireshark.
 
 Many improvements have been made.
 See the “New and Updated Features” section below for more details.
@@ -49,8 +53,40 @@ They previously shipped with Npcap 1.55.
    PCRE2 is compatible with PCRE so the user-visible changes should be minimal.
    Some exotic patterns may now be invalid and require rewriting.
 ** Adds a new strict equality operator "===" or "all_eq". The expression "a === b" is true if and only if all a's are equal to b.
-   The negation of "===" can now be written as "!==" (any_ne), in adittion to "~=" (introduced in Wireshark 3.6.0).
+   The negation of "===" can now be written as "!==" (any_ne).
 ** Adds the aliases "any_eq" for "==" and "all_ne" for "!=".
+** The operator "~=" is deprecated and will be removed in a future version. Use "!==" with the same meaning instead.
+** Date and time can be given in UTC using ISO 8601 (with 'Z' timezone) or by appending the suffix "UTC" to the legacy formats.
+   Otherwise local time is used.
+** Integer literal constants may be written in binary (in addition to decimal/octal/hexadecimal) using the prefix "0b" or "0B".
+** New syntax to disambiguate literals from identifiers. Every value with a leading dot is a protocol or protocol field.
+   Every value with a leading colon or in between angle brackets is a literal value. See the User Guide for details.
+** Floats must be written with a leading and ending digit. For example the values ".7" and "7." are now invalid as floats.
+   It must be written "0.7" and "7.0" respectively.
+** The "bitwise and" operator is now a first-class bit operator, not a boolean operator. In particular this means
+   it is now possible to mask bits, e.g.: frame[0] & 0x0F == 3.
+** Arithmetic is supported for numeric fields with the usual operators: +, -, *, /, %. Arithmetic expressions must be grouped using
+   curly brackets (not parenthesis).
+** Logical AND now has higher precedence than logical OR, in line with most programming languages.
+** Adds new display filter functions max() and min().
+
+* text2pcap and "Import from Hex Dump":
+** text2pcap supports writing the output file in all the capture file formats
+   that wiretap library supports, using the same "-F" option as editcap,
+   mergecap, and tshark.
+** text2pcap supports selecting the encapsulation type of the output file
+   format using the wiretap library short names with an "-E" option, similiar
+   to the "-T" option of editcap.
+** text2pcap has been updated to use the new logging output options and the
+  "-d" flag has been removed. The "debug" log level corresponds to the old
+  "-d" flag, and the "noisy" log level corresponds to using "-d" multiple times.
+** text2pcap and Import from Hex Dump support writing fake IP headers (and fake
+   TCP, UDP, and SCTP headers) to files with Raw IP, Raw IPv4, and Raw IPv6
+   encapsulations, in addition to Ethernet encapsulation as previously.
+** text2pcap supports scanning the input file using a custom regular expression,
+   as supported in Import from Hex Dump in Wireshark 3.6.x.
+** In general, text2pcap and wireshark's Import from Hex Dump have feature
+   parity.
 
 * HTTP2 dissector now supports using fake headers to parse the DATAs of streams captured without first HEADERS frames of a long-lived stream (like
   gRPC streaming call which allows sending many request or response messages in one HTTP2 stream). User can specify fake headers according to the
@@ -60,7 +96,22 @@ They previously shipped with Npcap 1.55.
 
 * Capture Options dialog contains same configuration icon as Welcome Screen. It is possible to configure interface there.
 
-// === Removed Features and Support
+* Extcap dialog remembers password items during runtime therefore it is possible to run extcap multiple times in row. Passwords are never stored to disk.
+
+* It is possible to set extcap passwords on cli for tshark and other cli tools.
+
+* Extcap configuration dialog now supports and remembers empty strings. There are new buttons to reset a value back to default value.
+
+* Support to display JSON mapping for Protobuf message.
+
+* macOS debugging symbols are now shipped in separate packages.
+
+* ZigBee ZCL Messaging: rename zbee_zcl_se.msg.msg_ctrl.depreciated to zbee_zcl_se.msg.msg_ctrl.deprecated
+
+=== Removed Features and Support
+
+* CMake: The options starting with DISABLE_something were renamed ENABLE_something for consistency.
+  For example DISABLE_WERROR=On became ENABLE_WERROR=Off. The defaults are unchanged.
 
 // === Removed Dissectors
 
@@ -77,10 +128,27 @@ They previously shipped with Npcap 1.55.
 // git log --oneline --diff-filter=A --stat v3.7.0rc0.. epan/dissectors plugins
 [commaize]
 --
-Host IP Configuration Protocol (HICP)
-Secure Host IP Configuration Protocol (SHICP)
-Mesh Connex (MCX)
+Allied Telesis Loop Detection (AT LDF)
+AUTOSAR I-PDU Multiplexer (AUTOSAR I-PduM)
+DTN Bundle Protocol Version 7 (BPv7)
+DTN Bundle Protocol Security (BPSec)
+DTN TCP Convergence Layer Protocol (TCPCL)
+DVB Selection Information Table (DVB SIT)
+Enhanced Cash Trading Interface 10.0 (XTI)
+Enhanced Order Book Interface 10.0 (EOBI)
+Enhanced Trading Interface 10.0 (ETI)
 FiveCo's Legacy Register Access Protocol (5co-legacy)
+Generic Data Transfer Protocol (GDT)
+Host IP Configuration Protocol (HICP)
+Mesh Connex (MCX)
+Microsoft Cluster Remote Control Protocol (RCP)
+Realtek
+REdis Serialization Protocol v2 (RESP)
+Secure File Transfer Protocol (sftp)
+Secure Host IP Configuration Protocol (SHICP)
+USB Attached SCSI (UASP)
+ZBOSS NCP
+gRPC Web (gRPC-Web)
 --
 
 === Updated Protocol Support

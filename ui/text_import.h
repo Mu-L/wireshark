@@ -63,8 +63,6 @@ enum text_import_mode {
 
 typedef struct
 {
-    int debug;
-
     /* Input info */
     // TODO: add const, as this way string constants can't be used
     // BUT: the other way clang-check complaines when you free them
@@ -119,6 +117,17 @@ typedef struct
 } text_import_info_t;
 
 int text_import(text_import_info_t * const info);
+
+/* Write the SHB and IDB to the wtap_dump_params before opening the wtap dump
+ * file. While dummy headers can be written automatically, this writes out
+ * some extra information including an optional interface name.
+ *
+ * NOTE: The caller will be responsible for freeing params->idb_inf after
+ * finished with the wtap_dumper to avoid a memory leak. wtap_dump_close
+ * does not free it.
+ */
+int
+text_import_pre_open(wtap_dump_params * const params, int file_type_subtype, const char* const input_filename, const char* const interface_name);
 
 #ifdef __cplusplus
 }

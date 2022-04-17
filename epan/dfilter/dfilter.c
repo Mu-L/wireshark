@@ -30,7 +30,7 @@
 #define DFILTER_TOKEN_ID_OFFSET	1
 
 /* Scanner's lval */
-extern df_lval_t *df_lval;
+extern stnode_t *df_lval;
 
 /* Holds the singular instance of our Lemon parser object */
 static void*	ParserObj = NULL;
@@ -42,7 +42,8 @@ static void*	ParserObj = NULL;
 dfwork_t *global_dfw;
 
 void
-dfilter_vfail(dfwork_t *dfw, const char *format, va_list args)
+dfilter_vfail(dfwork_t *dfw, stloc_t *loc,
+				const char *format, va_list args)
 {
 	/* Flag a syntax error. This is currently only used in
 	 * the grammar parsing stage to terminate the parsing
@@ -54,60 +55,85 @@ dfilter_vfail(dfwork_t *dfw, const char *format, va_list args)
 		return;
 
 	dfw->error_message = ws_strdup_vprintf(format, args);
+	if (loc) {
+		dfw->err_loc = *loc;
+	}
+	else {
+		dfw->err_loc.col_start = -1;
+		dfw->err_loc.col_len = 0;
+	}
 }
 
 void
-dfilter_fail(dfwork_t *dfw, const char *format, ...)
+dfilter_fail(dfwork_t *dfw, stloc_t *loc,
+				const char *format, ...)
 {
 	va_list	args;
 
 	va_start(args, format);
-	dfilter_vfail(dfw, format, args);
+	dfilter_vfail(dfw, loc, format, args);
 	va_end(args);
 }
 
 void
-dfilter_fail_throw(dfwork_t *dfw, long code, const char *format, ...)
+dfilter_fail_throw(dfwork_t *dfw, stloc_t *loc, const char *format, ...)
 {
 	va_list	args;
 
 	va_start(args, format);
-	dfilter_vfail(dfw, format, args);
+	dfilter_vfail(dfw, loc, format, args);
 	va_end(args);
-	THROW(code);
+	THROW(TypeError);
+}
+
+void
+dfw_set_error_location(dfwork_t *dfw, stloc_t *loc)
+{
+	/* Set new location. */
+	ws_assert(loc);
+	dfw->err_loc = *loc;
 }
 
 /*
  * Tries to convert an STTYPE_UNPARSED to a STTYPE_FIELD. If it's not registered as
  * a field pass UNPARSED to the semantic check.
  */
-stnode_t *
-dfilter_resolve_unparsed(dfwork_t *dfw, stnode_t *node)
+header_field_info *
+dfilter_resolve_unparsed(dfwork_t *dfw, const char *name)
 {
-	const char *name;
 	header_field_info *hfinfo;
-
-	ws_assert(stnode_type_id(node) == STTYPE_UNPARSED);
-
-	name = stnode_data(node);
 
 	hfinfo = proto_registrar_get_byname(name);
 	if (hfinfo != NULL) {
 		/* It's a field name */
-		stnode_replace(node, STTYPE_FIELD, hfinfo);
-		return node;
+		return hfinfo;
 	}
 
 	hfinfo = proto_registrar_get_byalias(name);
 	if (hfinfo != NULL) {
 		/* It's an aliased field name */
-		add_deprecated_token(dfw, name);
-		stnode_replace(node, STTYPE_FIELD, hfinfo);
-		return node;
+		if (dfw)
+			add_deprecated_token(dfw, name);
+		return hfinfo;
 	}
 
 	/* It's not a field. */
-	return node;
+	return NULL;
+}
+
+gboolean
+dfw_resolve_unparsed(dfwork_t *dfw, stnode_t *st)
+{
+	if (stnode_type_id(st) != STTYPE_UNPARSED)
+		return FALSE;
+
+	header_field_info *hfinfo = dfilter_resolve_unparsed(dfw, stnode_data(st));
+	if (hfinfo != NULL) {
+		stnode_replace(st, STTYPE_FIELD, hfinfo);
+		return TRUE;
+	}
+	stnode_replace(st, STTYPE_LITERAL, g_strdup(stnode_data(st)));
+	return FALSE;
 }
 
 /* Initialize the dfilter module */
@@ -183,43 +209,50 @@ free_insns(GPtrArray *insns)
 void
 dfilter_free(dfilter_t *df)
 {
-	guint i;
-
 	if (!df)
 		return;
 
 	if (df->insns) {
 		free_insns(df->insns);
 	}
-	if (df->consts) {
-		free_insns(df->consts);
-	}
 
 	g_free(df->interesting_fields);
 
-	/* Clear registers with constant values (as set by dfvm_init_const).
-	 * Other registers were cleared on RETURN by free_register_overhead. */
-	for (i = df->num_registers; i < df->max_registers; i++) {
-		g_list_free(df->registers[i]);
-	}
+	g_hash_table_destroy(df->references);
 
 	if (df->deprecated)
 		g_ptr_array_unref(df->deprecated);
 
 	g_free(df->registers);
 	g_free(df->attempted_load);
-	g_free(df->owns_memory);
+	g_free(df->free_registers);
+	g_free(df->expanded_text);
+	g_free(df->syntax_tree_str);
 	g_free(df);
+}
+
+static void free_reference(gpointer data)
+{
+	/* List data must be freed. */
+	GSList **fvalues_ptr = data;
+	if (*fvalues_ptr)
+		g_slist_free_full(*fvalues_ptr, (GDestroyNotify)fvalue_free);
+	g_free(fvalues_ptr);
 }
 
 
 static dfwork_t*
 dfwork_new(void)
 {
-	dfwork_t	*dfw;
+	dfwork_t *dfw = g_new0(dfwork_t, 1);
 
-	dfw = g_new0(dfwork_t, 1);
-	dfw->first_constant = -1;
+	dfw->references =
+		g_hash_table_new_full(g_direct_hash, g_direct_equal,
+				NULL, free_reference);
+
+	dfw->loaded_references =
+		g_hash_table_new_full(g_direct_hash, g_direct_equal,
+				NULL, (GDestroyNotify)dfvm_value_unref);
 
 	return dfw;
 }
@@ -239,16 +272,22 @@ dfwork_free(dfwork_t *dfw)
 		g_hash_table_destroy(dfw->interesting_fields);
 	}
 
+	if (dfw->references) {
+		g_hash_table_destroy(dfw->references);
+	}
+
+	if (dfw->loaded_references) {
+		g_hash_table_destroy(dfw->loaded_references);
+	}
+
 	if (dfw->insns) {
 		free_insns(dfw->insns);
 	}
 
-	if (dfw->consts) {
-		free_insns(dfw->consts);
-	}
-
 	if (dfw->deprecated)
 		g_ptr_array_unref(dfw->deprecated);
+
+	g_free(dfw->expanded_text);
 
 	/*
 	 * We don't free the error message string; our caller will return
@@ -272,21 +311,29 @@ const char *tokenstr(int token)
 		case TOKEN_TEST_GE:	return "TEST_GE";
 		case TOKEN_TEST_CONTAINS: return "TEST_CONTAINS";
 		case TOKEN_TEST_MATCHES: return "TEST_MATCHES";
-		case TOKEN_TEST_BITWISE_AND: return "TEST_BITWISE_AND";
+		case TOKEN_BITWISE_AND: return "BITWISE_AND";
+		case TOKEN_PLUS:	return "PLUS";
+		case TOKEN_MINUS:	return "MINUS";
+		case TOKEN_STAR:	return "STAR";
+		case TOKEN_RSLASH:	return "RSLASH";
+		case TOKEN_PERCENT:	return "PERCENT";
 		case TOKEN_TEST_NOT:	return "TEST_NOT";
 		case TOKEN_STRING:	return "STRING";
 		case TOKEN_CHARCONST:	return "CHARCONST";
 		case TOKEN_UNPARSED:	return "UNPARSED";
+		case TOKEN_LITERAL:	return "LITERAL";
+		case TOKEN_FIELD:	return "FIELD";
 		case TOKEN_LBRACKET:	return "LBRACKET";
 		case TOKEN_RBRACKET:	return "RBRACKET";
 		case TOKEN_COMMA:	return "COMMA";
-		case TOKEN_RANGE:	return "RANGE";
+		case TOKEN_RANGE_NODE:	return "RANGE_NODE";
 		case TOKEN_TEST_IN:	return "TEST_IN";
 		case TOKEN_LBRACE:	return "LBRACE";
 		case TOKEN_RBRACE:	return "RBRACE";
 		case TOKEN_DOTDOT:	return "DOTDOT";
 		case TOKEN_LPAREN:	return "LPAREN";
 		case TOKEN_RPAREN:	return "RPAREN";
+		case TOKEN_REFERENCE:	return "REFERENCE";
 	}
 	return "<unknown>";
 }
@@ -309,11 +356,18 @@ add_deprecated_token(dfwork_t *dfw, const char *token)
 	g_ptr_array_add(deprecated, g_strdup(token));
 }
 
+char *
+dfilter_expand(const char *expr, char **err_ret)
+{
+	return dfilter_macro_apply(expr, err_ret);
+}
+
 gboolean
 dfilter_compile_real(const gchar *text, dfilter_t **dfp,
-			gchar **error_ret, const char *caller)
+			gchar **error_ret, dfilter_loc_t *loc_ptr,
+			const char *caller, gboolean save_tree,
+			gboolean apply_macros)
 {
-	gchar		*expanded_text;
 	int		token;
 	dfilter_t	*dfilter;
 	dfwork_t	*dfw;
@@ -322,6 +376,7 @@ dfilter_compile_real(const gchar *text, dfilter_t **dfp,
 	YY_BUFFER_STATE in_buffer;
 	gboolean failure = FALSE;
 	unsigned token_count = 0;
+	char		*tree_str;
 
 	ws_assert(dfp);
 	*dfp = NULL;
@@ -350,28 +405,32 @@ dfilter_compile_real(const gchar *text, dfilter_t **dfp,
 
 	dfw = dfwork_new();
 
-	expanded_text = dfilter_macro_apply(text, &dfw->error_message);
-	if (expanded_text == NULL) {
-		goto FAILURE;
+	if (apply_macros) {
+		dfw->expanded_text = dfilter_macro_apply(text, &dfw->error_message);
+		if (dfw->expanded_text == NULL) {
+			goto FAILURE;
+		}
+		ws_noisy("Expanded text: %s", dfw->expanded_text);
 	}
-
-	ws_noisy("Expanded text: %s", expanded_text);
+	else {
+		dfw->expanded_text = g_strdup(text);
+		ws_noisy("Verbatim text: %s", dfw->expanded_text);
+	}
 
 	if (df_lex_init(&scanner) != 0) {
 		dfw->error_message = ws_strdup_printf("Can't initialize scanner: %s", g_strerror(errno));
 		goto FAILURE;
 	}
 
-	in_buffer = df__scan_string(expanded_text, scanner);
+	in_buffer = df__scan_string(dfw->expanded_text, scanner);
 
+	memset(&state, 0, sizeof(state));
 	state.dfw = dfw;
-	state.quoted_string = NULL;
-	state.raw_string = FALSE;
 
 	df_set_extra(&state, scanner);
 
 	while (1) {
-		df_lval = df_lval_new();
+		df_lval = stnode_new(STTYPE_UNINITIALIZED, NULL, NULL, NULL);
 		token = df_lex(scanner);
 
 		/* Check for scanner failure */
@@ -387,7 +446,7 @@ dfilter_compile_real(const gchar *text, dfilter_t **dfp,
 
 		ws_noisy("(%u) Token %d %s %s",
 				++token_count, token, tokenstr(token),
-				df_lval_value(df_lval));
+				stnode_token(df_lval));
 
 		/* Give the token to the parser */
 		Dfilter(ParserObj, token, df_lval, dfw);
@@ -404,7 +463,7 @@ dfilter_compile_real(const gchar *text, dfilter_t **dfp,
 	/* If we created a df_lval_t but didn't use it, free it; the
 	 * parser doesn't know about it and won't free it for us. */
 	if (df_lval) {
-		df_lval_free(df_lval, TRUE);
+		stnode_free(df_lval);
 		df_lval = NULL;
 	}
 
@@ -435,14 +494,20 @@ dfilter_compile_real(const gchar *text, dfilter_t **dfp,
 		*dfp = NULL;
 	}
 	else {
-		log_syntax_tree(LOG_LEVEL_NOISY, dfw->st_root, "Syntax tree before semantic check");
+		log_syntax_tree(LOG_LEVEL_NOISY, dfw->st_root, "Syntax tree before semantic check", NULL);
 
 		/* Check semantics and do necessary type conversion*/
 		if (!dfw_semcheck(dfw)) {
 			goto FAILURE;
 		}
 
-		log_syntax_tree(LOG_LEVEL_NOISY, dfw->st_root, "Syntax tree after successful semantic check");
+		/* Cache tree representation in tree_str. */
+		tree_str = NULL;
+		log_syntax_tree(LOG_LEVEL_NOISY, dfw->st_root, "Syntax tree after successful semantic check", &tree_str);
+
+		if (save_tree && tree_str == NULL) {
+			tree_str = dump_syntax_tree_str(dfw->st_root);
+		}
 
 		/* Create bytecode */
 		dfw_gencode(dfw);
@@ -450,21 +515,30 @@ dfilter_compile_real(const gchar *text, dfilter_t **dfp,
 		/* Tuck away the bytecode in the dfilter_t */
 		dfilter = dfilter_new(dfw->deprecated);
 		dfilter->insns = dfw->insns;
-		dfilter->consts = dfw->consts;
 		dfw->insns = NULL;
-		dfw->consts = NULL;
 		dfilter->interesting_fields = dfw_interesting_fields(dfw,
 			&dfilter->num_interesting_fields);
+		dfilter->expanded_text = dfw->expanded_text;
+		dfw->expanded_text = NULL;
+		dfilter->references = dfw->references;
+		dfw->references = NULL;
+
+		if (save_tree) {
+			ws_assert(tree_str);
+			dfilter->syntax_tree_str = tree_str;
+			tree_str = NULL;
+		}
+		else {
+			dfilter->syntax_tree_str = NULL;
+			g_free(tree_str);
+			tree_str = NULL;
+		}
 
 		/* Initialize run-time space */
-		dfilter->num_registers = dfw->first_constant;
-		dfilter->max_registers = dfw->next_register;
-		dfilter->registers = g_new0(GList*, dfilter->max_registers);
-		dfilter->attempted_load = g_new0(gboolean, dfilter->max_registers);
-		dfilter->owns_memory = g_new0(gboolean, dfilter->max_registers);
-
-		/* Initialize constants */
-		dfvm_init_const(dfilter);
+		dfilter->num_registers = dfw->next_register;
+		dfilter->registers = g_new0(GSList *, dfilter->num_registers);
+		dfilter->attempted_load = g_new0(gboolean, dfilter->num_registers);
+		dfilter->free_registers = g_new0(GDestroyNotify, dfilter->num_registers);
 
 		/* And give it to the user. */
 		*dfp = dfilter;
@@ -476,7 +550,6 @@ dfilter_compile_real(const gchar *text, dfilter_t **dfp,
 		ws_log(WS_LOG_DOMAIN, LOG_LEVEL_INFO, "Compiled display filter: %s", text);
 	else
 		ws_debug("Compiled empty filter (successfully).");
-	wmem_free(NULL, expanded_text);
 	return TRUE;
 
 FAILURE:
@@ -493,11 +566,14 @@ FAILURE:
 		else {
 			g_free(dfw->error_message);
 		}
+		if (loc_ptr != NULL) {
+			loc_ptr->col_start = dfw->err_loc.col_start;
+			loc_ptr->col_len = dfw->err_loc.col_len;
+		}
 	}
 
 	global_dfw = NULL;
 	dfwork_free(dfw);
-	wmem_free(NULL, expanded_text);
 	*dfp = NULL;
 	return FALSE;
 }
@@ -555,6 +631,80 @@ dfilter_dump(dfilter_t *df)
 			sep = ", ";
 		}
 		printf("\n");
+	}
+}
+
+const char *
+dfilter_text(dfilter_t *df)
+{
+	return df->expanded_text;
+}
+
+const char *
+dfilter_syntax_tree(dfilter_t *df)
+{
+	return df->syntax_tree_str;
+}
+
+void
+dfilter_log_full(const char *domain, enum ws_log_level level,
+			const char *file, long line, const char *func,
+			dfilter_t *df, const char *msg)
+{
+	if (!ws_log_msg_is_active(domain, level))
+		return;
+
+	if (df == NULL) {
+		ws_log_write_always_full(domain, level, file, line, func,
+				"%s: NULL display filter", msg ? msg : "?");
+		return;
+	}
+
+	char *str = dfvm_dump_str(NULL, df, TRUE);
+	if (G_UNLIKELY(msg == NULL))
+		ws_log_write_always_full(domain, level, file, line, func, "\nFilter:\n%s\n%s", dfilter_text(df), str);
+	else
+		ws_log_write_always_full(domain, level, file, line, func, "%s:\nFilter:\n%s\n%s", msg, dfilter_text(df), str);
+	g_free(str);
+}
+
+void
+dfilter_load_field_references(const dfilter_t *df, proto_tree *tree)
+{
+	GHashTableIter iter;
+	GPtrArray *finfos;
+	field_info *finfo;
+	header_field_info *hfinfo;
+	GSList **fvalues_ptr;
+	int i, len;
+
+	if (g_hash_table_size(df->references) == 0) {
+		/* Nothing to do. */
+		return;
+	}
+
+	g_hash_table_iter_init( &iter, df->references);
+	while (g_hash_table_iter_next (&iter, (void **)&hfinfo, (void **)&fvalues_ptr)) {
+		/* If we have a previous list free it and the data too */
+		g_slist_free_full(*fvalues_ptr, (GDestroyNotify)fvalue_free);
+		*fvalues_ptr = NULL;
+
+		while (hfinfo) {
+			finfos = proto_find_finfo(tree, hfinfo->id);
+			if ((finfos == NULL) || (g_ptr_array_len(finfos) == 0)) {
+				hfinfo = hfinfo->same_name_next;
+				continue;
+			}
+
+			len = finfos->len;
+			for (i = 0; i < len; i++) {
+				finfo = g_ptr_array_index(finfos, i);
+				*fvalues_ptr = g_slist_prepend(*fvalues_ptr,
+						fvalue_dup(&finfo->value));
+			}
+
+			hfinfo = hfinfo->same_name_next;
+		}
 	}
 }
 

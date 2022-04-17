@@ -249,7 +249,7 @@ include(GNUInstallDirs)
 
 set(PROJECT_INSTALL_INCLUDEDIR "${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}")
 
-# Make sure our executables can can load our libraries if we install into
+# Make sure our executables can load our libraries if we install into
 # a non-default directory on Unix-like systems other than macOS.
 # https://gitlab.kitware.com/cmake/community/wikis/doc/cmake/RPATH-handling
 set(LIBRARY_INSTALL_RPATH "")
@@ -464,8 +464,8 @@ set_property(DIRECTORY
 	PROPERTY COMPILE_DEFINITIONS
 		"G_DISABLE_DEPRECATED"
 		"G_DISABLE_SINGLE_INCLUDES"
-		$<$<OR:$<BOOL:${DISABLE_ASSERT}>,$<CONFIG:Release>>:WS_DISABLE_ASSERT>
-		$<$<OR:$<BOOL:${DISABLE_DEBUG}>,$<CONFIG:Release>>:WS_DISABLE_DEBUG>
+		$<$<OR:$<NOT:$<BOOL:${ENABLE_ASSERT}>>,$<CONFIG:Release>>:WS_DISABLE_ASSERT>
+		$<$<OR:$<NOT:$<BOOL:${ENABLE_DEBUG}>>,$<CONFIG:Release>>:WS_DISABLE_DEBUG>
 )
 
 if(WIN32)
@@ -490,7 +490,7 @@ if(WIN32)
 		# Make sure everyone is using the same API and that it's sufficient
 		# for our needs.
 		# This should match the following:
-		# - The <compatibility><application> section in image\wireshark.exe.manifest.in
+		# - The <compatibility><application> section in resources\wireshark.exe.manifest.in
 		# - The GetWindowsVersion parts of packaging\nsis\wireshark.nsi
 		# - The VersionNT parts of packaging\wix\Prerequisites.wxi
 		#
@@ -579,7 +579,7 @@ if( CMAKE_C_COMPILER_ID MATCHES "MSVC")
 	## 4295: array is too small to include a terminating null character
 	## 4100: unreferenced formal parameter
 	## 4189: local variable is initialized but not referenced
-	# Disable warnings about about use of flexible array members:
+	# Disable warnings about use of flexible array members:
 	## 4200: nonstandard extension used : zero-sized array in struct/union
 	list(APPEND LOCAL_CFLAGS /w34295 /w34100 /w34189 /wd4200)
 
@@ -987,7 +987,7 @@ if(MSVC)
 endif()
 
 set(WERROR_COMMON_FLAGS "")
-if(NOT DISABLE_WERROR AND NOT ENABLE_EXTRA_COMPILER_WARNINGS)
+if(ENABLE_WERROR AND NOT ENABLE_EXTRA_COMPILER_WARNINGS)
 	if(CMAKE_C_COMPILER_ID MATCHES "MSVC")
 		set(WERROR_COMMON_FLAGS "/WX")
 	else()
@@ -1167,7 +1167,7 @@ if (NOT WIN32)
 	find_package(M REQUIRED)
 endif()
 
-if(BUILD_sshdump OR BUILD_ciscodump)
+if(BUILD_sshdump OR BUILD_ciscodump OR BUILD_wifidump)
 	set(ENABLE_LIBSSH ON)
 else()
 	set(ENABLE_LIBSSH OFF)
@@ -1178,17 +1178,21 @@ ws_find_package(PCAP ENABLE_PCAP HAVE_LIBPCAP)
 ws_find_package(AIRPCAP ENABLE_AIRPCAP HAVE_AIRPCAP)
 ws_find_package(Systemd BUILD_sdjournal HAVE_SYSTEMD)
 
-# Build the Qt GUI?
-if(BUILD_wireshark)
+# Build one of the Qt GUIs?
+if(BUILD_wireshark OR BUILD_logwolf)
 	if(USE_qt6)
 		set(qtver "6")
+		if(DEFINED ENV{WIRESHARK_QT6_PREFIX_PATH})
+			set(CMAKE_PREFIX_PATH $ENV{WIRESHARK_QT6_PREFIX_PATH})
+		endif()
 	else()
 		set(qtver "5")
-	endif()
-	# We used to recommend setting QT5_BASE_DIR and should probably deprecate this at some point.
-	if(WIN32)
-		set(QT5_BASE_PATH "$ENV{QT5_BASE_DIR}")
-		set(CMAKE_PREFIX_PATH "${QT5_BASE_PATH}")
+		# XXX We used to recommend setting QT5_BASE_DIR. Remove after the 4.0 branch is created.
+		if(WIN32 AND DEFINED ENV{QT5_BASE_DIR})
+			message(WARNING "Support for QT5_BASE_DIR will be removed in a future release.")
+			set(QT5_BASE_PATH "$ENV{QT5_BASE_DIR}")
+			set(CMAKE_PREFIX_PATH "${QT5_BASE_PATH}")
+		endif()
 	endif()
 	if(APPLE AND EXISTS /usr/local/opt/qt5)
 		# Homebrew installs Qt5 (up to at least 5.11.0) in
@@ -1218,9 +1222,6 @@ if(BUILD_wireshark)
 			add_definitions("-Zc:__cplusplus")
 		endif()
 		list(APPEND QT_PACKAGELIST Qt6Core5Compat)
-		if(APPLE)
-			set(MIN_MACOS_VERSION 10.14)
-		endif()
 	else()
 		list(APPEND QT_PACKAGELIST Qt5Multimedia)
 		if(WIN32)
@@ -1244,7 +1245,7 @@ if(BUILD_wireshark)
 	endif()
 	set(QT_FOUND ON)
 	if(APPLE)
-		ws_find_package(Sparkle ENABLE_SPARKLE HAVE_SOFTWARE_UPDATE)
+		ws_find_package(Sparkle ENABLE_SPARKLE HAVE_SOFTWARE_UPDATE 1 EXACT)
 	endif()
 	if(Qt${qtver}Multimedia_FOUND)
 		set(QT_MULTIMEDIA_LIB 1)
@@ -1302,6 +1303,11 @@ ws_find_package(ILBC ENABLE_ILBC HAVE_ILBC)
 
 ws_find_package(OPUS ENABLE_OPUS HAVE_OPUS)
 
+if (BUILD_logwolf)
+	# libsinsp+libscap, required for falco-bridge
+	ws_find_package(Sinsp ENABLE_SINSP HAVE_SINSP)
+endif()
+
 # CMake 3.9 and below used 'LIBXML2_LIBRARIES' as the name of the cache entry
 # storing the find_library result. Transfer it to the new cache variable such
 # that reset_find_package can detect and clear outdated cache variables.
@@ -1334,7 +1340,7 @@ find_package( Asciidoctor 1.5 )
 find_package(DOXYGEN)
 
 # The SpeexDSP resampler is required iff building wireshark or sharkd.
-if(BUILD_wireshark OR BUILD_sharkd)
+if(BUILD_wireshark OR BUILD_logwolf OR BUILD_sharkd)
 	# We don't provide a binary package for SpeexDSP in our repository.
 	# If using the repository don't bother searching for a system SpeexDSP
 	# installation and just use the bundled resampler code instead.
@@ -1391,7 +1397,7 @@ if (QT_FOUND)
 	# CMake uses qmake to find Qt4. It relies on Qt's CMake modules
 	# to find Qt5. This means that we can't assume that the qmake
 	# in our PATH is the correct one. We can fetch qmake's location
-	# from Qt5::qmake, which is is defined in Qt5CoreConfigExtras.cmake.
+	# from Qt5::qmake, which is defined in Qt5CoreConfigExtras.cmake.
 	get_target_property(QT_QMAKE_EXECUTABLE Qt${qtver}::qmake IMPORTED_LOCATION)
 	get_filename_component(_qt_bin_path "${QT_QMAKE_EXECUTABLE}" DIRECTORY)
 	set(QT_BIN_PATH "${_qt_bin_path}" CACHE INTERNAL
@@ -1504,9 +1510,11 @@ include( UseCheckAPI )
 # If you change the nesting level be sure to check also the INSTALL_RPATH
 # target property.
 if (WIN32)
-	set(EXTCAP_INSTALL_LIBDIR "extcap" CACHE INTERNAL "The extcap dir")
+	set(EXTCAP_INSTALL_LIBDIR "extcap" CACHE INTERNAL "External capture utilities path")
+	set(EXTLOG_INSTALL_LIBDIR "extlog" CACHE INTERNAL "External log utilities path")
 else ()
-	set(EXTCAP_INSTALL_LIBDIR "${CMAKE_INSTALL_LIBDIR}/${PROJECT_NAME}/extcap" CACHE INTERNAL "The extcap dir")
+	set(EXTCAP_INSTALL_LIBDIR "${CMAKE_INSTALL_LIBDIR}/${PROJECT_NAME}/extcap" CACHE INTERNAL "External capture utilities path")
+	set(EXTLOG_INSTALL_LIBDIR "${CMAKE_INSTALL_LIBDIR}/${PROJECT_NAME}/extlog" CACHE INTERNAL "External log utilities path")
 endif()
 
 if(APPLE)
@@ -1543,6 +1551,7 @@ add_subdirectory( epan )
 add_subdirectory( extcap )
 add_subdirectory( randpkt_core )
 add_subdirectory( tools/lemon )
+add_subdirectory( tools/radiotap-gen )
 add_subdirectory( ui )
 add_subdirectory( wiretap )
 add_subdirectory( writecap )
@@ -1576,6 +1585,10 @@ if(BUILD_wireshark AND QT_FOUND)
 	add_subdirectory( ui/qt )
 endif()
 
+if(BUILD_logwolf AND QT_FOUND)
+	add_subdirectory( ui/logwolf )
+endif()
+
 # Location of our plugins. PLUGIN_DIR should allow running
 # from the build directory similar to DATAFILE_DIR above.
 if(ENABLE_PLUGINS)
@@ -1605,6 +1618,12 @@ if(ENABLE_PLUGINS)
 		plugins/codecs/l16_mono
 		${CUSTOM_PLUGIN_SRC_DIR}
 	)
+	set(LOGWOLF_PLUGIN_SRC_DIRS)
+	if(SINSP_FOUND)
+		list(APPEND LOGWOLF_PLUGIN_SRC_DIRS
+			plugins/epan/falco_bridge
+		)
+	endif()
 	if(SPANDSP_FOUND)
 		list(APPEND PLUGIN_SRC_DIRS
 			plugins/codecs/G722
@@ -1642,6 +1661,7 @@ if(ENABLE_PLUGINS)
 
 else()
 	set(PLUGIN_SRC_DIRS )
+	set(LOGWOLF_PLUGIN_SRC_DIRS )
 endif()
 
 if(ENABLE_APPLICATION_BUNDLE)
@@ -1651,14 +1671,23 @@ if(ENABLE_APPLICATION_BUNDLE)
 		# Xcode
 		set(_plugin_dir "${CMAKE_BINARY_DIR}/run/$<CONFIG>/Wireshark.app/Contents/PlugIns/wireshark/${PLUGIN_PATH_ID}")
 	endif()
+	if(CMAKE_CFG_INTDIR STREQUAL ".")
+		set(_logwolf_plugin_dir "${CMAKE_BINARY_DIR}/run/Logwolf.app/Contents/PlugIns/logwolf/${PLUGIN_PATH_ID}")
+	else()
+		# Xcode
+		set(_logwolf_plugin_dir "${CMAKE_BINARY_DIR}/run/$<CONFIG>/Logwolf.app/Contents/PlugIns/logwolf/${PLUGIN_PATH_ID}")
+	endif()
 elseif(WIN32 AND NOT CMAKE_CFG_INTDIR STREQUAL ".")
 	set(_plugin_dir "${CMAKE_BINARY_DIR}/run/$<CONFIG>/${PLUGIN_VERSION_DIR}")
+	set(_logwolf_plugin_dir ${_plugin_dir})
 else()
 	set(_plugin_dir "${DATAFILE_DIR}/${PLUGIN_VERSION_DIR}")
+	set(_logwolf_plugin_dir ${_plugin_dir})
 endif()
 set (PLUGIN_DIR ${_plugin_dir} CACHE INTERNAL "Build time plugin location.")
+set (LOGWOLF_PLUGIN_DIR ${_logwolf_plugin_dir} CACHE INTERNAL "Build time Logwolf plugin location.")
 
-foreach(_plugin_src_dir ${PLUGIN_SRC_DIRS})
+foreach(_plugin_src_dir ${PLUGIN_SRC_DIRS} ${LOGWOLF_PLUGIN_SRC_DIRS})
 	add_subdirectory( ${_plugin_src_dir} )
 endforeach()
 
@@ -1698,17 +1727,20 @@ set(DOXYGEN_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 set(CFG_OUT_FILES
 	doxygen.cfg
-	image/libwireshark.rc
-	image/wireshark.rc
-	image/dumpcap.rc
-	image/libwsutil.rc
-	image/wiretap.rc
-	image/wireshark.exe.manifest
-	packaging/macosx/Info.plist
-	packaging/macosx/dmgbuild-settings.py
+	packaging/macosx/LogwolfInfo.plist
 	packaging/macosx/osx-app.sh
 	packaging/macosx/osx-dmg.sh
+	packaging/macosx/wireshark-app.dmgbuild
+	packaging/macosx/wireshark-dsym.dmgbuild
+	packaging/macosx/WiresharkInfo.plist
 	packaging/source/git-export-release.sh
+	resources/dumpcap.rc
+	resources/libwireshark.rc
+	resources/libwiretap.rc
+	resources/libwsutil.rc
+	resources/logwolf.exe.manifest
+	resources/wireshark.exe.manifest
+	resources/wireshark.rc
 	wireshark.pc
 )
 foreach( _cfg_file ${CFG_OUT_FILES} )
@@ -1754,7 +1786,7 @@ set_package_properties(LIBXML2 PROPERTIES
 set_package_properties(LIBSSH PROPERTIES
 	DESCRIPTION "Library for implementing SSH clients"
 	URL "https://www.libssh.org/"
-	PURPOSE "extcap remote SSH interfaces (sshdump, ciscodump)"
+	PURPOSE "extcap remote SSH interfaces (sshdump, ciscodump, wifidump)"
 )
 set_package_properties(LZ4 PROPERTIES
 	DESCRIPTION "LZ4 is a fast lossless compression algorithm"
@@ -1816,6 +1848,11 @@ set_package_properties(PCRE2 PROPERTIES
 	DESCRIPTION "Regular expression pattern matching using the same syntax and semantics as Perl 5"
 	PURPOSE "Support for regular expressions"
 )
+set_package_properties(Sinsp PROPERTIES
+	DESCRIPTION "libsinsp and libscap"
+	URL "https://github.com/falcosecurity/libs/"
+	PURPOSE "Support for Falco plugins"
+)
 
 string(TOUPPER "${CMAKE_BUILD_TYPE}" _build_type)
 message(STATUS "C-Flags: ${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_${_build_type}}")
@@ -1860,7 +1897,7 @@ if(WIN32)
 		ui/win32/file_dlg_win32.cpp
 	)
 	set(PLATFORM_UI_RC_FILES
-		image/file_dlg_win32.rc
+		resources/file_dlg_win32.rc
 	)
 elseif(APPLE)
 	set(PLATFORM_UI_SRC
@@ -1909,12 +1946,12 @@ set(TSHARK_TAP_SRC
 )
 
 set(INSTALL_DIRS
-	diameter
-	dtds
+	resources/protocols/diameter
+	resources/protocols/dtds
 	profiles
-	radius
-	tpncp
-	wimaxasncp
+	resources/protocols/radius
+	resources/protocols/tpncp
+	resources/protocols/wimaxasncp
 )
 
 set(INSTALL_FILES
@@ -1951,6 +1988,7 @@ if (ASCIIDOCTOR_FOUND)
 		${CMAKE_BINARY_DIR}/doc/rawshark.html
 		${CMAKE_BINARY_DIR}/doc/reordercap.html
 		${CMAKE_BINARY_DIR}/doc/sshdump.html
+		${CMAKE_BINARY_DIR}/doc/wifidump.html
 		${CMAKE_BINARY_DIR}/doc/text2pcap.html
 		${CMAKE_BINARY_DIR}/doc/tshark.html
 		${CMAKE_BINARY_DIR}/doc/wireshark.html
@@ -2242,106 +2280,117 @@ if(LUA_FOUND AND ENABLE_LUA)
 endif(LUA_FOUND AND ENABLE_LUA)
 # doc/*.html handled elsewhere.
 
+set(_protocol_data_dir ${CMAKE_SOURCE_DIR}/resources/protocols)
 # Glob patterns relative to the source directory that should be copied to
 # ${DATAFILE_DIR} (including directory prefixes)
 # TODO shouldn't this use full (relative) paths instead of glob patterns?
 set(DATA_FILES_SRC
-	"tpncp/tpncp.dat"
-	"wimaxasncp/*.dtd"
-	"wimaxasncp/*.xml"
+	${_protocol_data_dir}/tpncp/tpncp.dat
+	${_protocol_data_dir}/wimaxasncp/*.dtd
+	${_protocol_data_dir}/wimaxasncp/*.xml
 )
 
 # Copy all paths from the source tree to the data directory. Directories are
 # automatically created if missing as the filename is given.
-file(GLOB _data_files RELATIVE "${CMAKE_SOURCE_DIR}" ${DATA_FILES_SRC})
+file(GLOB _data_files RELATIVE ${_protocol_data_dir} ${DATA_FILES_SRC})
 foreach(_data_file ${_data_files})
 	add_custom_command(OUTPUT "${DATAFILE_DIR}/${_data_file}"
 		COMMAND ${CMAKE_COMMAND} -E copy_if_different
-			"${CMAKE_SOURCE_DIR}/${_data_file}"
-			"${DATAFILE_DIR}/${_data_file}"
+			${_protocol_data_dir}/${_data_file}
+			${DATAFILE_DIR}/${_data_file}
 		DEPENDS
-			"${CMAKE_SOURCE_DIR}/${_data_file}"
+			${_protocol_data_dir}/${_data_file}
 	)
-	list(APPEND copy_data_files_depends "${DATAFILE_DIR}/${_data_file}")
+	list(APPEND copy_data_files_depends ${DATAFILE_DIR}/${_data_file})
 endforeach()
 
-file(GLOB _dtds_src_files RELATIVE "${CMAKE_SOURCE_DIR}" "dtds/*.dtd")
+file(GLOB _dtds_src_files RELATIVE ${_protocol_data_dir} ${_protocol_data_dir}/dtds/*.dtd)
 
 set (_dtds_data_files)
+set (_dtds_dep_files)
 foreach(_data_file ${_dtds_src_files})
-	list(APPEND _dtds_data_files "${DATAFILE_DIR}/${_data_file}")
+	list(APPEND _dtds_data_files ${DATAFILE_DIR}/${_data_file})
+	list(APPEND _dtds_dep_files ${_protocol_data_dir}/${_data_file})
 endforeach()
 
 add_custom_command(
 	OUTPUT ${_dtds_data_files}
-	COMMAND ${CMAKE_COMMAND} -E make_directory "${DATAFILE_DIR}/dtds"
+	COMMAND ${CMAKE_COMMAND} -E make_directory ${DATAFILE_DIR}/dtds
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		${_dtds_src_files}
-		"${DATAFILE_DIR}/dtds"
+		${DATAFILE_DIR}/dtds
 	VERBATIM
-	DEPENDS ${_dtds_src_files}
-	WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+	DEPENDS ${_dtds_dep_files}
+	WORKING_DIRECTORY ${_protocol_data_dir}
 )
 
-file(GLOB _diameter_src_files RELATIVE "${CMAKE_SOURCE_DIR}"
-	diameter/*.dtd
-	diameter/*.xml
+file(GLOB _diameter_src_files RELATIVE ${_protocol_data_dir}
+	${_protocol_data_dir}/diameter/*.dtd
+	${_protocol_data_dir}/diameter/*.xml
 )
 
 set (_diameter_data_files)
+set (_diameter_dep_files)
 foreach(_data_file ${_diameter_src_files})
-	list(APPEND _diameter_data_files "${DATAFILE_DIR}/${_data_file}")
+	list(APPEND _diameter_data_files ${DATAFILE_DIR}/${_data_file})
+	list(APPEND _diameter_dep_files ${_protocol_data_dir}/${_data_file})
 endforeach()
 
 add_custom_command(
 	OUTPUT ${_diameter_data_files}
-	COMMAND ${CMAKE_COMMAND} -E make_directory "${DATAFILE_DIR}/diameter"
+	COMMAND ${CMAKE_COMMAND} -E make_directory ${DATAFILE_DIR}/diameter
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		${_diameter_src_files}
-		"${DATAFILE_DIR}/diameter"
+		${DATAFILE_DIR}/diameter
 	VERBATIM
-	DEPENDS ${_diameter_src_files}
-	WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+	DEPENDS ${_diameter_dep_files}
+	WORKING_DIRECTORY ${_protocol_data_dir}
 )
 
-file(GLOB _radius_src_files RELATIVE "${CMAKE_SOURCE_DIR}"
-	radius/README.radius_dictionary
-	radius/custom.includes
-	radius/dictionary
-	radius/dictionary.*
+file(GLOB _radius_src_files RELATIVE ${_protocol_data_dir}
+	${_protocol_data_dir}/radius/README.radius_dictionary
+	${_protocol_data_dir}/radius/custom.includes
+	${_protocol_data_dir}/radius/dictionary
+	${_protocol_data_dir}/radius/dictionary.*
 )
 
 set (_radius_data_files)
+set (_radius_dep_files)
 foreach(_data_file ${_radius_src_files})
-	list(APPEND _radius_data_files "${DATAFILE_DIR}/${_data_file}")
+	list(APPEND _radius_data_files ${DATAFILE_DIR}/${_data_file})
+	list(APPEND _radius_dep_files ${_protocol_data_dir}/${_data_file})
 endforeach()
 
 add_custom_command(
 	OUTPUT ${_radius_data_files}
-	COMMAND ${CMAKE_COMMAND} -E make_directory "${DATAFILE_DIR}/radius"
+	COMMAND ${CMAKE_COMMAND} -E make_directory ${DATAFILE_DIR}/radius
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		${_radius_src_files}
-		"${DATAFILE_DIR}/radius"
+		${DATAFILE_DIR}/radius
 	VERBATIM
-	DEPENDS ${_radius_src_files}
-	WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+	DEPENDS ${_radius_dep_files}
+	WORKING_DIRECTORY ${_protocol_data_dir}
 )
 
-file(GLOB _protobuf_src_files RELATIVE "${CMAKE_SOURCE_DIR}" protobuf/*.proto)
+file(GLOB _protobuf_src_files RELATIVE ${_protocol_data_dir}
+	${_protocol_data_dir}/protobuf/*.proto
+)
 set (_protobuf_data_files)
+set (_protobuf_dep_files)
 foreach(_data_file ${_protobuf_src_files})
-	list(APPEND _protobuf_data_files "${DATAFILE_DIR}/${_data_file}")
+	list(APPEND _protobuf_data_files ${DATAFILE_DIR}/${_data_file})
+	list(APPEND _protobuf_dep_files ${_protocol_data_dir}/${_data_file})
 endforeach()
 
 add_custom_command(
 	OUTPUT ${_protobuf_data_files}
-	COMMAND ${CMAKE_COMMAND} -E make_directory "${DATAFILE_DIR}/protobuf"
+	COMMAND ${CMAKE_COMMAND} -E make_directory ${DATAFILE_DIR}/protobuf
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		${_protobuf_src_files}
-		"${DATAFILE_DIR}/protobuf"
+		${DATAFILE_DIR}/protobuf
 	VERBATIM
-	DEPENDS ${_protobuf_src_files}
-	WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+	DEPENDS ${_protobuf_dep_files}
+	WORKING_DIRECTORY ${_protocol_data_dir}
 )
 
 file(GLOB _profiles_src_files RELATIVE "${CMAKE_SOURCE_DIR}" profiles/*/*)
@@ -2402,6 +2451,22 @@ if(BUILD_wireshark AND QT_FOUND)
 	set_executable_resources(wireshark "Wireshark" UNIQUE_RC)
 endif()
 
+if(BUILD_logwolf AND QT_FOUND)
+	set(LOGWOLF_SRC
+		file.c
+		fileset.c
+		${PLATFORM_UI_SRC}
+	)
+	set(logwolf_FILES
+		$<TARGET_OBJECTS:capture_opts>
+		$<TARGET_OBJECTS:ui_logwolf>
+		$<TARGET_OBJECTS:shark_common>
+		${LOGWOLF_SRC}
+		${PLATFORM_UI_RC_FILES}
+	)
+	set_executable_resources(logwolf "Logwolf" UNIQUE_RC)
+endif()
+
 if(ENABLE_APPLICATION_BUNDLE)
 	#
 	# Add -Wl,-single_module to the LDFLAGS used with shared
@@ -2426,9 +2491,6 @@ if(ENABLE_APPLICATION_BUNDLE)
 	set(CMAKE_EXE_LINKER_FLAGS
 	"-Wl,-headerpad_max_install_names -Wl,-search_paths_first ${CMAKE_EXE_LINKER_FLAGS}"
 	)
-
-	# Create our Frameworks directory
-	file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/run/${CMAKE_CFG_INTDIR}/Wireshark.app/Contents/Frameworks")
 
 	# Add files to the app bundle
 	# Wireshark.app/Contents
@@ -2523,7 +2585,7 @@ if(BUILD_wireshark AND QT_FOUND)
 		endif()
 		set_target_properties(
 			wireshark PROPERTIES
-				MACOSX_BUNDLE_INFO_PLIST ${CMAKE_BINARY_DIR}/packaging/macosx/Info.plist
+				MACOSX_BUNDLE_INFO_PLIST ${CMAKE_BINARY_DIR}/packaging/macosx/WiresharkInfo.plist
 		)
 		if(CMAKE_CFG_INTDIR STREQUAL ".")
 			# Add a wrapper script which opens the bundle. This adds
@@ -2571,6 +2633,109 @@ if(BUILD_wireshark AND QT_FOUND)
 			\"${QT_WINDEPLOYQT_EXECUTABLE}\"
 			--no-compiler-runtime
 			\"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/Wireshark.exe\")"
+		)
+
+	endif(QT_WINDEPLOYQT_EXECUTABLE)
+endif()
+
+if(BUILD_logwolf AND QT_FOUND)
+	set(logwolf_LIBS
+		ui
+		capchild
+		caputils
+		wiretap
+		epan
+		version_info
+		${QT_LIBRARIES}
+		${APPLE_APPLICATION_SERVICES_LIBRARY}
+		${APPLE_APPKIT_LIBRARY}
+		${APPLE_CORE_FOUNDATION_LIBRARY}
+		${APPLE_SYSTEM_CONFIGURATION_LIBRARY}
+		${SPARKLE_LIBRARIES}
+		${WIN_WS2_32_LIBRARY}
+		${WIN_VERSION_LIBRARY}
+		${WINSPARKLE_LIBRARIES}
+		$<$<BOOL:${WIN32}>:UxTheme.lib>
+		${SPEEXDSP_LIBRARIES}
+		${MINIZIP_LIBRARIES}
+	)
+
+	add_executable(logwolf WIN32 MACOSX_BUNDLE ${logwolf_FILES} ${EXTRA_BUNDLE_FILES})
+	if(WIN32 AND NOT BUILD_wireshark)
+		set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT logwolf)
+	endif()
+	set(PROGLIST ${PROGLIST} logwolf)
+	set_target_properties(logwolf PROPERTIES
+		LINK_FLAGS "${WS_LINK_FLAGS}"
+		FOLDER "Executables"
+		INSTALL_RPATH "${EXECUTABLE_INSTALL_RPATH}"
+		AUTOMOC ON
+		AUTOUIC ON
+		AUTORCC ON
+	)
+	if(MSVC)
+		set_target_properties(logwolf PROPERTIES LINK_FLAGS_DEBUG "${WS_MSVC_DEBUG_LINK_FLAGS}")
+	endif()
+	if(ENABLE_APPLICATION_BUNDLE OR WIN32)
+		set_target_properties(logwolf PROPERTIES OUTPUT_NAME Logwolf)
+	endif()
+
+	if(ENABLE_APPLICATION_BUNDLE)
+		if(ASCIIDOCTOR_FOUND)
+			# Make sure to generate files referenced by
+			# BUNDLE_RESOURCE_SHARE_MAN1_FILES
+			add_dependencies(logwolf manpages)
+		endif()
+		set_target_properties(
+			logwolf PROPERTIES
+				MACOSX_BUNDLE_INFO_PLIST ${CMAKE_BINARY_DIR}/packaging/macosx/LogwolfInfo.plist
+		)
+		if(CMAKE_CFG_INTDIR STREQUAL ".")
+			# Add a wrapper script which opens the bundle. This adds
+			# convenience but makes debugging more difficult.
+			# It is not created if using Xcode
+			# XXX Running run/Logwolf.app/Contents/MacOS/Logwolf works
+			# fine for me (Gerald) here on Mojave. Can we just make this a
+			# symlink?
+			file(REMOVE ${CMAKE_BINARY_DIR}/run/logwolf)
+			file(WRITE ${CMAKE_BINARY_DIR}/run/logwolf "#!/bin/sh\n")
+			file(APPEND ${CMAKE_BINARY_DIR}/run/logwolf "# Generated by ${CMAKE_CURRENT_LIST_FILE}\n")
+			file(APPEND ${CMAKE_BINARY_DIR}/run/logwolf "# Wrapper script which should work around the issue described at\n")
+			file(APPEND ${CMAKE_BINARY_DIR}/run/logwolf "# https://stackoverflow.com/questions/25318524/what-exactly-should-i-pass-to-nsapp-activateignoringotherapps-to-get-my-appl\n")
+			file(APPEND ${CMAKE_BINARY_DIR}/run/logwolf "exec ${CMAKE_BINARY_DIR}/run/Logwolf.app/Contents/MacOS/Logwolf \"\$\@\"\n")
+			execute_process(COMMAND chmod a+x ${CMAKE_BINARY_DIR}/run/logwolf)
+		endif()
+	endif()
+
+	target_link_libraries(logwolf ${logwolf_LIBS})
+	target_include_directories(logwolf SYSTEM PRIVATE ${SPARKLE_INCLUDE_DIRS})
+
+	install(
+		TARGETS logwolf
+		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+		BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR}
+	)
+
+	if(QT_WINDEPLOYQT_EXECUTABLE)
+		add_custom_target(copy_ls_qt_dlls ALL)
+		set_target_properties(copy_ls_qt_dlls PROPERTIES FOLDER "Copy Tasks")
+		# Will we ever need to use --debug? Windeployqt seems to
+		# be smart enough to copy debug DLLs when needed.
+		add_custom_command(TARGET copy_ls_qt_dlls
+			POST_BUILD
+			COMMAND set "PATH=${QT_BIN_PATH};%PATH%"
+			COMMAND "${QT_WINDEPLOYQT_EXECUTABLE}"
+				--no-compiler-runtime
+				--verbose 0
+				$<$<BOOL:${MSVC}>:--pdb>
+				"$<TARGET_FILE:logwolf>"
+		)
+		add_dependencies(copy_ls_qt_dlls logwolf)
+
+		install(CODE "execute_process(COMMAND
+			\"${QT_WINDEPLOYQT_EXECUTABLE}\"
+			--no-compiler-runtime
+			\"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/Logwolf.exe\")"
 		)
 
 	endif(QT_WINDEPLOYQT_EXECUTABLE)
@@ -2954,6 +3119,12 @@ if(BUILD_dumpcap AND PCAP_FOUND)
 			endif()"
 		)
 	endif()
+	if(BUILD_logwolf AND ENABLE_APPLICATION_BUNDLE)
+		add_custom_command(TARGET dumpcap POST_BUILD
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different
+				$<TARGET_FILE:dumpcap> run/Logwolf.app/Contents/MacOS/dumpcap
+		)
+	endif()
 elseif(BUILD_dumpcap AND ENABLE_PCAP)
 	message(WARNING "Dumpcap was requested but libpcap dependency is not available. "
 		"Wireshark will be built without packet capture capability.")
@@ -3021,7 +3192,7 @@ if (MAXMINDDB_FOUND)
 	install(TARGETS mmdbresolve RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
-if(ENABLE_APPLICATION_BUNDLE)
+if(ENABLE_APPLICATION_BUNDLE AND BUILD_wireshark)
 	file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/run/${CMAKE_CFG_INTDIR}/Wireshark.app/Contents/Resources/Extras")
 
 	# --preserve-xattr is undocumented but ensures that we install
@@ -3171,8 +3342,22 @@ if(ENABLE_APPLICATION_BUNDLE)
 	DEPENDS
 		${CMAKE_CURRENT_SOURCE_DIR}/packaging/macosx/Read_me_first.adoc
 	)
-	add_custom_target(read_me_first_html DEPENDS ${_read_me_first} )
-	add_dependencies(dmg_package_prep read_me_first_html)
+
+	set(_dsym_installation "packaging/macosx/Debugging symbols installation.html")
+	ADD_CUSTOM_COMMAND(
+	OUTPUT
+		${_dsym_installation}
+	COMMAND ${ASCIIDOCTOR_EXECUTABLE}
+		--backend html
+		--out-file ${_dsym_installation}
+		--attribute include-dir=${CMAKE_SOURCE_DIR}/docbook
+		${CMAKE_CURRENT_SOURCE_DIR}/packaging/macosx/Debugging_symbols_installation.adoc
+	DEPENDS
+		${CMAKE_CURRENT_SOURCE_DIR}/packaging/macosx/Debugging_symbols_installation.adoc
+	)
+
+	add_custom_target(dmg_package_readmes DEPENDS ${_read_me_first} ${_dsym_installation} )
+	add_dependencies(dmg_package_prep dmg_package_readmes)
 
 	ADD_CUSTOM_TARGET( dmg_package
 		COMMAND bash -x ${CMAKE_BINARY_DIR}/packaging/macosx/osx-dmg.sh
@@ -3182,6 +3367,44 @@ if(ENABLE_APPLICATION_BUNDLE)
 		# We create Wireshark.app in "run". Do our work there.
 		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/run
 	)
+
+endif()
+
+if(ENABLE_APPLICATION_BUNDLE AND BUILD_logwolf)
+	add_custom_target(logwolf_app_bundle)
+	set_target_properties(logwolf_app_bundle PROPERTIES FOLDER "Copy Tasks")
+	add_custom_command(TARGET logwolf_app_bundle
+		POST_BUILD
+		COMMAND "${CMAKE_BINARY_DIR}/packaging/macosx/osx-app.sh" --bundle Logwolf.app
+		WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/run"
+	)
+
+	# add_custom_target(dmg_package_prep DEPENDS app_bundle)
+
+	# set(_read_me_first "packaging/macosx/Read me first.html")
+	# ADD_CUSTOM_COMMAND(
+	# OUTPUT
+	# 	${_read_me_first}
+	# COMMAND ${ASCIIDOCTOR_EXECUTABLE}
+	# 	--backend html
+	# 	--out-file ${_read_me_first}
+	# 	--attribute include-dir=${CMAKE_SOURCE_DIR}/docbook
+	# 	--attribute min-macos-version=${MIN_MACOS_VERSION}
+	# 	${CMAKE_CURRENT_SOURCE_DIR}/packaging/macosx/Read_me_first.adoc
+	# DEPENDS
+	# 	${CMAKE_CURRENT_SOURCE_DIR}/packaging/macosx/Read_me_first.adoc
+	# )
+	# add_custom_target(read_me_first_html DEPENDS ${_read_me_first} )
+	# add_dependencies(dmg_package_prep read_me_first_html)
+
+	# ADD_CUSTOM_TARGET( dmg_package
+	# 	COMMAND bash -x ${CMAKE_BINARY_DIR}/packaging/macosx/osx-dmg.sh
+	# 	# Unlike nsis_package_prep + nsis_package, we can add a direct
+	# 	# dependency here.
+	# 	DEPENDS dmg_package_prep
+	# 	# We create Wireshark.app in "run". Do our work there.
+	# 	WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/run
+	# )
 
 endif()
 
@@ -3443,26 +3666,26 @@ install(FILES ${SHARK_PUBLIC_HEADERS}
 
 # Install icons and other desktop files for Freedesktop.org-compliant desktops.
 if((BUILD_wireshark AND QT_FOUND) AND NOT (WIN32 OR APPLE))
-	install(FILES org.wireshark.Wireshark-mime.xml
+	install(FILES resources/freedesktop/org.wireshark.Wireshark-mime.xml
 		DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/mime/packages"
 		RENAME org.wireshark.Wireshark.xml
 	)
-	install(FILES org.wireshark.Wireshark.metainfo.xml
+	install(FILES resources/freedesktop/org.wireshark.Wireshark.metainfo.xml
 		DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo"
 	)
 	if(BUILD_wireshark AND QT_FOUND)
-		install(FILES org.wireshark.Wireshark.desktop
+		install(FILES resources/freedesktop/org.wireshark.Wireshark.desktop
 			DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications")
 	endif()
 	foreach(size 16 24 32 48 64 128 256)
-		install(FILES image/wsicon${size}.png
+		install(FILES resources/icons/wsicon${size}.png
 			DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${size}x${size}/apps"
 			RENAME org.wireshark.Wireshark.png)
-		install(FILES image/WiresharkDoc-${size}.png
+		install(FILES resources/icons/WiresharkDoc-${size}.png
 			DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${size}x${size}/mimetypes"
 			RENAME org.wireshark.Wireshark-mimetype.png)
 	endforeach()
-	install(FILES image/wsicon.svg
+	install(FILES resources/icons/wsicon.svg
 		DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps"
 		RENAME org.wireshark.Wireshark.svg)
 endif()
@@ -3603,7 +3826,7 @@ set(_test_group_list
 	suite_dfilter.group_bytes_ipv6
 	suite_dfilter.group_bytes_type
 	suite_dfilter.group_double
-	suite_dfilter.group_dfunction_string
+	suite_dfilter.group_function
 	suite_dfilter.group_integer
 	suite_dfilter.group_integer_1byte
 	suite_dfilter.group_ipv4
@@ -3724,7 +3947,7 @@ if(SHELLCHECK_EXECUTABLE)
 	# added support for that.
 	add_custom_command(TARGET shellcheck POST_BUILD
 		COMMAND shellcheck --external-sources
-			image/stock_icons/svg-to-png.sh
+			resources/stock_icons/svg-to-png.sh
 			packaging/appimage/AppRun
 			"packaging/macosx/ChmodBPF/root/Library/Application Support/Wireshark/ChmodBPF/ChmodBPF"
 			packaging/macosx/osx-app.sh.in

@@ -26,6 +26,8 @@
 /* ---- Structures for pnio_rtc1 ---- */
 extern int       proto_pn_dcp;
 extern int proto_pn_io_apdu_status;
+extern int proto_pn_io_time_aware_status;
+
 extern gboolean  pnio_ps_selection;  /* given by pnio preferences */
 
 /* Structure for general station information */
@@ -36,8 +38,10 @@ typedef struct tagStationInfo {
     guint16   u16Vendor_id;
     guint16   u16Device_id;
     /* frame structure */
-    guint16   ioDataObjectNr;
-    guint16   iocsNr;
+    guint16   ioDataObjectNr_in;
+    guint16   ioDataObjectNr_out;
+    guint16   iocsNr_in;
+    guint16   iocsNr_out;
     /* GSDfile station information */
     gboolean  gsdFound;
     gboolean  gsdPathLength;

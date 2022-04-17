@@ -45,9 +45,10 @@ struct epan_range;
 }
 #endif /* __cplusplus */
 
-// Introduced in Qt 5.4
-#ifndef qUtf8Printable
-#define qUtf8Printable(str) str.toUtf8().constData()
+// qsizetype was added in Qt 5.10.0 and is used in the Qt 6 API.
+#if QT_VERSION < QT_VERSION_CHECK(5, 10, 0)
+#include "include/ws_posix_compat.h"
+typedef ssize_t qsizetype;
 #endif
 
 /*
@@ -147,11 +148,11 @@ G_GNUC_PRINTF(3, 0);
 
 /** Convert a range to a QString using range_convert_range().
  *
- * @param range A pointer to an range struct.
+ * @param range A pointer to a range_string struct.
  *
- * @return A QString representation of the address. May be the null string (QString())
+ * @return A QString representation of the range_string. May be the null string (QString())
  */
-const QString range_to_qstring(const struct epan_range *range);
+const QString range_to_qstring(const range_string *range);
 
 /** Convert a bits per second value to a human-readable QString using format_size().
  *

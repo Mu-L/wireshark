@@ -31,7 +31,6 @@
 
 #include "ipv4.h"
 #include "wsutil/nstime.h"
-#include "time_fmt.h"
 #include "tvbuff.h"
 #include "value_string.h"
 #include "tfs.h"
@@ -565,6 +564,12 @@ void proto_report_dissector_bug(const char *format, ...)
  *  ENC_TIME_MSECS - 6 to 8 bytes, representing a value in milliseconds.
  *  If the time is absolute, it's milliseconds since the UN*X epoch.
  *
+ *  ENC_TIME_USECS - 8 bytes, representing a value in microseconds.
+ *  If the time is absolute, it's microseconds since the UN*X epoch.
+ *
+ *  ENC_TIME_NSECS - 8 bytes, representing a value in nanoseconds.
+ *  If the time is absolute, it's nanoseconds since the UN*X epoch.
+ *
  *  ENC_TIME_SECS_NTP - 4 bytes, representing a count of seconds since
  *  the NTP epoch.
  *
@@ -575,15 +580,12 @@ void proto_report_dissector_bug(const char *format, ...)
  *  ENC_TIME_MSEC_NTP - 4-8 bytes, representing a count of milliseconds since
  *  the NTP epoch.
  *
- *  ENC_MIP6 - 8 bytes; the first 48 bits are seconds since the UN*X epoch
+ *  ENC_TIME_MIP6 - 8 bytes; the first 48 bits are seconds since the UN*X epoch
  *  and the remaining 16 bits indicate the number of 1/65536's of a second
  *  since that second.
  *
  *  ENC_TIME_CLASSIC_MAC_OS_SECS - 4-8 bytes, representing a count of seconds
  *  since January 1, 1904, 00:00:00 UTC.
- *
- *  ENC_TIME_NSECS - 8 bytes, representing a value in nanoseconds.
- *  If the time is absolute, it's nanoseconds since the UN*X epoch.
  *
  * The backwards-compatibility names are defined as hex numbers so that
  * the script to generate init.lua will add them as global variables,
@@ -605,6 +607,7 @@ void proto_report_dissector_bug(const char *format, ...)
 #define ENC_TIME_MIP6                0x00000024
 #define ENC_TIME_CLASSIC_MAC_OS_SECS 0x00000026
 #define ENC_TIME_NSECS               0x00000028
+#define ENC_TIME_USECS               0x00000030
 
 /*
  * For cases where a string encoding contains a timestamp, use one
@@ -654,6 +657,7 @@ void proto_report_dissector_bug(const char *format, ...)
 /*
  * Note that this enum values are parsed in make-init-lua.pl so make sure
  * any changes here still makes valid entries in init.lua.
+ * XXX The script requires the equals sign.
  */
 typedef enum {
     BASE_NONE    = 0,   /**< none */
@@ -685,11 +689,19 @@ typedef enum {
     BASE_PT_SCTP = 16,  /**< SCTP port */
 
 /* OUI types */
-    BASE_OUI     = 17   /**< OUI resolution */
+    BASE_OUI     = 17,  /**< OUI resolution */
 
+/* Time types */
+    ABSOLUTE_TIME_LOCAL   = 18,     /**< local time in our time zone, with month and day */
+    ABSOLUTE_TIME_UTC     = 19,     /**< UTC, with month and day */
+    ABSOLUTE_TIME_DOY_UTC = 20,     /**< UTC, with 1-origin day-of-year */
+    ABSOLUTE_TIME_NTP_UTC = 21,     /**< UTC, with "NULL" when timestamp is all zeros */
 } field_display_e;
 
 #define FIELD_DISPLAY(d) ((d) & FIELD_DISPLAY_E_MASK)
+
+#define FIELD_DISPLAY_IS_ABSOLUTE_TIME(d) \
+        (FIELD_DISPLAY(d) >= ABSOLUTE_TIME_LOCAL && FIELD_DISPLAY(d) <= ABSOLUTE_TIME_NTP_UTC)
 
 /* Following constants have to be ORed with a field_display_e when dissector
  * want to use specials value-string MACROs for a header_field_info */
@@ -710,14 +722,13 @@ typedef enum {
 
 #define BASE_SHOW_ASCII_PRINTABLE 0x00010000 /**< show byte array as ASCII if it's all printable characters */
 
+#define BASE_SHOW_UTF_8_PRINTABLE 0x00020000 /**< show byte array as UTF-8 if it's all valid and printable UTF-8 characters */
+
 /** BASE_ values that cause the field value to be displayed twice */
 #define IS_BASE_DUAL(b) ((b)==BASE_DEC_HEX||(b)==BASE_HEX_DEC)
 
 /** BASE_PT_ values display decimal and transport port service name */
 #define IS_BASE_PORT(b) (((b)==BASE_PT_UDP||(b)==BASE_PT_TCP||(b)==BASE_PT_DCCP||(b)==BASE_PT_SCTP))
-
-/* For FT_ABSOLUTE_TIME, the display format is an absolute_time_display_e
- * as per time_fmt.h. */
 
 typedef enum {
     HF_REF_TYPE_NONE,       /**< Field is not referenced */
@@ -1030,9 +1041,6 @@ static inline void proto_item_set_url(proto_item *ti) {
 
 typedef void (*proto_tree_foreach_func)(proto_node *, gpointer);
 typedef gboolean (*proto_tree_traverse_func)(proto_node *, gpointer);
-
-extern gboolean proto_tree_traverse_post_order(proto_tree *tree,
-    proto_tree_traverse_func func, gpointer data);
 
 WS_DLL_PUBLIC void proto_tree_children_foreach(proto_tree *tree,
     proto_tree_foreach_func func, gpointer data);
