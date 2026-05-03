@@ -1354,7 +1354,7 @@ Select All; a context menu mirroring those plus Add / Remove
 Breakpoint and Run to this Line; tabs marked with a trailing `*`
 for unsaved changes plus a save / discard prompt on close; a
 monospace font that follows Wireshark's main-window zoom so
-`kbd:[Ctrl+&#43;]` / `kbd:[Ctrl+-]` adjust the editor text size too.
+`kbd:[Ctrl+&#43;] or kbd:[Ctrl+=]` / `kbd:[Ctrl+-]` adjust the editor text size too.
 `kbd:[Esc]` first hides any visible find / go-to-line bar; if
 neither is shown, it queues a close of the dialog.
 
