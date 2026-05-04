@@ -286,6 +286,9 @@ echo "Optional package libcap|libcap2 is unavailable" >&2
 add_package ADDITIONAL_LIST nghttp2-devel || add_package ADDITIONAL_LIST libnghttp2-devel ||
 echo "Optional package nghttp2-devel|libnghttp2-devel is unavailable" >&2
 
+add_package ADDITIONAL_LIST nghttp3-devel || add_package ADDITIONAL_LIST libnghttp3-devel ||
+echo "Optional package nghttp3-devel|libnghttp3-devel is unavailable" >&2
+
 add_package ADDITIONAL_LIST snappy || add_package ADDITIONAL_LIST libsnappy1 ||
 echo "Optional package snappy|libsnappy1 is unavailable" >&2
 
