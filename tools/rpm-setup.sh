@@ -101,13 +101,6 @@ ADDITIONAL_LIST="
 	xxhash-devel
 	"
 
-# PNG compression utilities used by compress-pngs:
-ADDITIONAL_LIST="$ADDITIONAL_LIST
-	advancecomp
-	optipng
-	oxipng
-	pngcrush"
-
 # XXX
 RPMDEPS_LIST="rpm-build"
 
@@ -357,6 +350,19 @@ echo "Optional package opencore-amr-devel|libopencore-amr-devel is unavailable" 
 
 add_package ADDITIONAL_LIST softhsm ||
 echo "Optional package softhsm is unavailable" >&2
+
+# PNG compression utilities used by compress-pngs:
+add_package ADDITIONAL_LIST advancecomp ||
+echo "Optional package advancecomp is unavailable" >&2
+
+add_package ADDITIONAL_LIST optipng ||
+echo "Optional package optipng is unavailable" >&2
+
+add_package ADDITIONAL_LIST oxipng ||
+echo "Optional package oxipng is unavailable" >&2
+
+add_package ADDITIONAL_LIST pngcrush ||
+echo "Optional package pngcrush is unavailable" >&2
 
 ACTUAL_LIST=$BASIC_LIST
 
