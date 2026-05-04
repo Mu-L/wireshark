@@ -648,10 +648,10 @@ QString watchItemExpansionKey(const QStandardItem *item)
 
 const QString kLuaDbgHeaderPlus{QStringLiteral("\uFF0B")};
 const QString kLuaDbgHeaderMinus{QStringLiteral("\uFF0D")};
-const QString kLuaDbgHeaderEdit{QStringLiteral("\u2699\uFE0E")};
+const QString kLuaDbgHeaderEdit{QStringLiteral("\u2699")};
 const QString kLuaDbgHeaderRemoveAll{QStringLiteral("\u24CD")};
 const QString kLuaDbgRowLog{QStringLiteral("\u2630")};
-const QString kLuaDbgRowExtras{QStringLiteral("\u203B")};
+const QString kLuaDbgRowExtras{QStringLiteral("\u2699")};
 
 const QString kLuaDbgHeaderToolButtonStyle{QStringLiteral("QToolButton { border: none; padding: 0px; margin: 0px; }")};
 
@@ -851,7 +851,7 @@ void styleLuaDebuggerHeaderIconOnlyButton(QToolButton *btn, int side)
 #ifdef Q_OS_MAC
     const int btnSide = side;
 #else
-    const int btnSide = qMax(1, side - 4);
+    const int btnSide = qMax(1, side - 2);
 #endif
     btn->setIconSize(QSize(btnSide, btnSide));
     btn->setFixedSize(btnSide, btnSide);

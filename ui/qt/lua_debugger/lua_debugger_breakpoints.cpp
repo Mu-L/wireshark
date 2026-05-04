@@ -100,8 +100,8 @@ const ModeSpec kBreakpointEditModes[kModeCount] = {
      QT_TRANSLATE_NOOP("BreakpointConditionDelegate", "Pause after N hits (0 disables)"),
      QT_TRANSLATE_NOOP("BreakpointConditionDelegate", "Gate the pause on a hit counter. The dropdown next to N "
                                                       "picks the comparison mode: from pauses on every hit "
-                                                      "from N onwards (default); every pauses on hits N, 2\xc3\x97N, "
-                                                      "3\xc3\x97N, \xe2\x80\xa6; once pauses on the Nth hit and "
+                                                      "from N onwards (default); every pauses on hits N, 2N, "
+                                                      "3N, \xe2\x80\xa6; once pauses on the N-th hit and "
                                                       "deactivates the breakpoint. Use 0 to disable the gate. The "
                                                       "counter is preserved across edits to Expression / Hit "
                                                       "Count / Log Message; lowering the target below the current "
@@ -588,7 +588,7 @@ QWidget *LuaDbgBreakpointConditionDelegate::createEditor(QWidget *parent, const 
                                                          "Comparison mode for the hit count:\n"
                                                          "from — pause on every hit from N onwards.\n"
                                                          "every — pause on hits N, 2N, 3N…\n"
-                                                         "once — pause once on the Nth hit and deactivate the "
+                                                         "once — pause once on the N-th hit and deactivate the "
                                                          "breakpoint."));
     hitModeCombo->setVisible(false);
 
@@ -1246,7 +1246,7 @@ void LuaDebuggerBreakpointsController::configureColumns() const
     }
     QHeaderView *breakpointHeader = tree_->header();
     breakpointHeader->setStretchLastSection(true);
-    breakpointHeader->setSectionResizeMode(BreakpointColumn::Active, QHeaderView::Interactive);
+    breakpointHeader->setSectionResizeMode(BreakpointColumn::Active, QHeaderView::ResizeToContents);
     breakpointHeader->setSectionResizeMode(BreakpointColumn::Line, QHeaderView::Interactive);
     breakpointHeader->setSectionResizeMode(BreakpointColumn::Location, QHeaderView::Interactive);
     model_->setHeaderData(BreakpointColumn::Location, Qt::Horizontal, host_->tr("Location"));
@@ -2400,13 +2400,13 @@ CollapsibleSection *LuaDebuggerDialog::createBreakpointsSection(QWidget *parent)
                                       "current frame. Runtime errors count as false and surface a "
                                       "warning icon on the row.</p>"
                                       "<p><b>Hit Count</b><br/>"
-                                      "Gate the pause on a hit counter (<code>0</code> "
-                                      "disables). The dropdown next to <i>N</i> picks the "
+                                      "Gate the pause on a hit counter. "
+                                      "The dropdown next to <i>N</i> picks the "
                                       "comparison mode: <code>from</code> pauses on every hit "
                                       "from <i>N</i> onwards (default); <code>every</code> "
                                       "pauses on hits <i>N</i>, 2&times;<i>N</i>, "
                                       "3&times;<i>N</i>, &hellip;; <code>once</code> pauses on "
-                                      "the <i>N</i>th hit and deactivates the breakpoint. The "
+                                      "the <i>N</i>-th hit and deactivates the breakpoint. The "
                                       "counter is preserved "
                                       "across edits; right-click the row to reset it.</p>"
                                       "<p><b>Log Message</b><br/>"
@@ -2427,11 +2427,7 @@ CollapsibleSection *LuaDebuggerDialog::createBreakpointsSection(QWidget *parent)
                                       "<p>Edit the <i>Location</i> cell (double-click, F2, or "
                                       "right-click &rarr; Edit) to attach one of these. A white "
                                       "core inside the breakpoint dot &mdash; in this list and in "
-                                      "the gutter &mdash; marks rows that carry extras. "
-                                      "Switching the editor's mode dropdown mid-edit discards "
-                                      "typed-but-uncommitted text on the other pages; press "
-                                      "Enter on a page before switching if you want to keep "
-                                      "what you typed.</p>"));
+                                      "the gutter &mdash; marks rows that carry extras.</p>"));
     breakpointsModel = new QStandardItemModel(this);
     breakpointsModel->setColumnCount(BreakpointColumn::Count);
     breakpointsModel->setHorizontalHeaderLabels({tr("Active"), tr("Line"), tr("File")});

@@ -1695,6 +1695,9 @@ void LuaDebuggerDialog::drainPendingLogs()
         return;
     }
     evalController().appendOutputLines(batch);
+
+    /* Update the breakpoints tree to reflect the new hit count. */
+    breakpointsController_.refreshFromEngine();
 }
 
 namespace LuaDebuggerMainClosePolicy
