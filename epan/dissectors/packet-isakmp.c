@@ -5205,11 +5205,8 @@ dissect_notif(tvbuff_t *tvb, packet_info *pinfo, unsigned offset, unsigned lengt
         gcry_md_hash_buffer(GCRY_MD_SHA1, sha1_buf, buf, offset_buf);
 
         /* Notification_data in tvb*/
-        uint8_t notif_buf[sizeof(sha1_buf)];
-        tvb_memcpy(tvb, notif_buf, offset, sizeof(notif_buf));
-
         /* If values are the same, then NAT was not detected. */
-        if (memcmp(notif_buf, sha1_buf, sizeof(sha1_buf)) == 0) {
+        if (tvb_memeql(tvb, offset, sha1_buf, sizeof(sha1_buf)) == 0) {
             proto_item_append_text(data_item, " [correct, NAT was not detected]");
         } else {
             /* NAT was detected, show calculated value in hex for easier troubleshooting. */
@@ -5257,15 +5254,12 @@ dissect_notif(tvbuff_t *tvb, packet_info *pinfo, unsigned offset, unsigned lengt
         offset_buf += 2;
 
         /* SHA1 hash of the concatenated fields. */
-        unsigned char sha1_buf[HASH_SHA1_LENGTH];
+        unsigned char sha1_buf[HASH_SHA1_LENGTH] = {0};
         gcry_md_hash_buffer(GCRY_MD_SHA1, sha1_buf, buf, offset_buf);
 
         /* Notification_data in tvb*/
-        uint8_t notif_buf[sizeof(sha1_buf)];
-        tvb_memcpy(tvb, notif_buf, offset, sizeof(notif_buf));
-
         /* If values are the same, then NAT was not detected. */
-        if (memcmp(notif_buf, sha1_buf, sizeof(sha1_buf)) == 0) {
+        if (tvb_memeql(tvb, offset, sha1_buf, sizeof(sha1_buf)) == 0) {
             proto_item_append_text(data_item, " [correct, NAT was not detected]");
         } else {
             /* NAT was detected, show calculated value in hex for easier troubleshooting. */
