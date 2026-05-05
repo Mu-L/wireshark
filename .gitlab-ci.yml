@@ -333,7 +333,7 @@ Source Package:
     # --no-output
     - stat --format="%n %s bytes" wireshark-*.tar.*
     - for digest in sha512 sha256 sha1 ; do openssl $digest wireshark-*.tar.* ; done
-    - if [ -n "$S3_DESTINATION_DIST" ] ; then rclone copy . "wireshark:$S3_DESTINATION_DIST" --include "wireshark-*.tar.*"" ; fi
+    - if [ -n "$S3_DESTINATION_DIST" ] ; then rclone copy . "wireshark:$S3_DESTINATION_DIST" --include "wireshark-*.tar.*" ; fi
     - if [ -n "$S3_DESTINATION_RELEASE" ] ; then rclone copy . "wireshark:$S3_DESTINATION_RELEASE" --include "{wire,strato}shark-release-notes-*.html" ; fi
   artifacts:
     paths:
