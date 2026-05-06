@@ -325,7 +325,8 @@ Source Package:
     - if [ "$CI_JOB_STATUS" != "success" ]; then exit 0 ; fi
     - if [ -n "$SCHEDULE_TYPE" ] ; then exit 0 ; fi
     - rclone config create wireshark s3
-      provider=Other
+      provider=AWS
+      region=us-east-2
       env_auth=true
       endpoint=$S3_ENDPOINT_WIRESHARK
       acl=private
